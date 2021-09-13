@@ -29,17 +29,21 @@ private:
     vk::PhysicalDevice physicalDevice;
     vk::Device device;
 
-    uint32_t graphicsQueueFamily, presentQueueFamily, computeQueueFamily;
-    vk::Queue graphicsQueue, presentQueue, computeQueue;
+    uint32_t queueFamily;
+    vk::Queue queue;
 
-    vk::CommandPool graphicsCommandPool, computeCommandPool;
+    vk::CommandPool commandPool;
 
     vk::SwapchainKHR swapChain;
     vk::Image swapChainImage;
     vk::ImageView swapChainImageView;
 
-    vk::RenderPass renderPass;
-    vk::Framebuffer framebuffer;
+    vk::DescriptorSetLayout descriptorSetLayout;
+    vk::DescriptorPool descriptorPool;
+    vk::DescriptorSet descriptorSet;
+
+    vk::PipelineLayout pipelineLayout;
+    vk::Pipeline pipeline;
 
 
     void createWindow();
@@ -50,18 +54,26 @@ private:
 
     void pickPhysicalDevice();
 
-    void findQueueFamilies();
+    void findQueueFamily();
 
     void createLogicalDevice();
 
-    void createCommandPools();
+    void createCommandPool();
 
     void createSwapChain();
 
-    void createRenderPass();
-
-    void createFramebuffer();
-
     [[nodiscard]] vk::ImageView createImageView(const vk::Image &image) const;
+
+    void createDescriptorSetLayout();
+
+    void createDescriptorPool();
+
+    void createDescriptorSet();
+
+    void createPipelineLayout();
+
+    void createPipeline();
+
+    [[nodiscard]] static std::vector<char> readBinaryFile(const std::string &path);
 
 };

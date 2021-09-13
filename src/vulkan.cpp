@@ -1,30 +1,37 @@
 #include "vulkan.h"
 #include <iostream>
 #include <set>
+#include <fstream>
+#include <utility>
 
 const std::vector<const char*> requiredDeviceExtensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
-Vulkan::Vulkan(VulkanSettings settings) : settings(settings) {
+Vulkan::Vulkan(VulkanSettings settings) : settings(std::move(settings)) {
     createWindow();
     createInstance();
     createSurface();
     pickPhysicalDevice();
-    findQueueFamilies();
+    findQueueFamily();
     createLogicalDevice();
-    createCommandPools();
+    createCommandPool();
     createSwapChain();
-    createRenderPass();
+    createDescriptorSetLayout();
+    createDescriptorPool();
+    createDescriptorSet();
+    createPipelineLayout();
+    createPipeline();
 }
 
 Vulkan::~Vulkan() {
-    device.destroyFramebuffer(framebuffer);
-    device.destroyRenderPass(renderPass);
+    device.destroyPipeline(pipeline);
+    device.destroyPipelineLayout(pipelineLayout);
+    device.destroyDescriptorSetLayout(descriptorSetLayout);
+    device.destroyDescriptorPool(descriptorPool);
     device.destroyImageView(swapChainImageView);
     device.destroySwapchainKHR(swapChain);
-    device.destroyCommandPool(graphicsCommandPool);
-    device.destroyCommandPool(computeCommandPool);
+    device.destroyCommandPool(commandPool);
     device.destroy();
     instance.destroySurfaceKHR(surface);
     instance.destroy();
@@ -129,12 +136,8 @@ void Vulkan::pickPhysicalDevice() {
     throw std::runtime_error("No GPU supporting all required features found!");
 }
 
-void Vulkan::findQueueFamilies() {
+void Vulkan::findQueueFamily() {
     std::vector<vk::QueueFamilyProperties> queueFamilies = physicalDevice.getQueueFamilyProperties();
-
-    bool graphicsPipelineFound = false;
-    bool presentPipelineFound = false;
-    bool computePipelineFound = false;
 
     for (uint32_t i = 0; i < queueFamilies.size(); i++) {
         bool supportsGraphics = (queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics)
@@ -143,51 +146,22 @@ void Vulkan::findQueueFamilies() {
                                == vk::QueueFlagBits::eCompute;
         bool supportsPresenting = physicalDevice.getSurfaceSupportKHR(static_cast<uint32_t>(i), surface);
 
-        if (supportsGraphics && !graphicsPipelineFound) {
-            graphicsQueueFamily = i;
-            graphicsPipelineFound = true;
-        }
-
-        if (supportsPresenting && !presentPipelineFound) {
-            presentQueueFamily = i;
-            presentPipelineFound = true;
-        }
-
-        if (!supportsGraphics && supportsCompute && !computePipelineFound) {
-            computeQueueFamily = i;
-            computePipelineFound = true;
-        }
-
-        if (graphicsPipelineFound && presentPipelineFound && computePipelineFound)
+        if (supportsGraphics && supportsPresenting && supportsCompute) {
+            queueFamily = i;
             break;
-    }
-
-    // if no compute only queue was found, try to find one, even if it has graphics capabilities
-    if (!computePipelineFound) {
-        for (uint32_t i = 0; i < queueFamilies.size(); i++) {
-            if ((queueFamilies[i].queueFlags & vk::QueueFlagBits::eCompute) == vk::QueueFlagBits::eCompute) {
-                computeQueueFamily = i;
-                break;
-            }
         }
     }
 }
 
 void Vulkan::createLogicalDevice() {
-    std::set<uint32_t> uniqueQueueFamilies = {graphicsQueueFamily, presentQueueFamily, computeQueueFamily};
-
     float queuePriority = 1.0f;
-    std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
-    queueCreateInfos.reserve(uniqueQueueFamilies.size());
-
-    for (uint32_t queueFamily: uniqueQueueFamilies) {
-        queueCreateInfos.push_back(
-                {
-                        .queueFamilyIndex = queueFamily,
-                        .queueCount = 1,
-                        .pQueuePriorities = &queuePriority
-                });
-    }
+    std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos = {
+            {
+                    .queueFamilyIndex = queueFamily,
+                    .queueCount = 1,
+                    .pQueuePriorities = &queuePriority
+            }
+    };
 
     vk::PhysicalDeviceFeatures deviceFeatures = {};
 
@@ -202,14 +176,11 @@ void Vulkan::createLogicalDevice() {
     device = physicalDevice.createDevice(deviceCreateInfo);
 
     // get queues
-    graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
-    presentQueue = device.getQueue(presentQueueFamily, 0);
-    computeQueue = device.getQueue(computeQueueFamily, 0);
+    queue = device.getQueue(queueFamily, 0);
 }
 
-void Vulkan::createCommandPools() {
-    graphicsCommandPool = device.createCommandPool({.queueFamilyIndex = graphicsQueueFamily});
-    computeCommandPool = device.createCommandPool({.queueFamilyIndex = computeQueueFamily});
+void Vulkan::createCommandPool() {
+    commandPool = device.createCommandPool({.queueFamilyIndex = queueFamily});
 }
 
 void Vulkan::createSwapChain() {
@@ -229,71 +200,12 @@ void Vulkan::createSwapChain() {
             .oldSwapchain = nullptr
     };
 
-    if (presentQueueFamily != graphicsQueueFamily) {
-        uint32_t queueFamilyIndices[2] = {graphicsQueueFamily, presentQueueFamily};
-
-        swapChainCreateInfo.imageSharingMode = vk::SharingMode::eConcurrent;
-        swapChainCreateInfo.queueFamilyIndexCount = 2;
-        swapChainCreateInfo.pQueueFamilyIndices = queueFamilyIndices;
-    }
-
     swapChain = device.createSwapchainKHR(swapChainCreateInfo);
 
     // swap chain images
     std::vector<vk::Image> swapChainImages = device.getSwapchainImagesKHR(swapChain);
     swapChainImage = swapChainImages.front();
     swapChainImageView = createImageView(swapChainImage);
-}
-
-void Vulkan::createRenderPass() {
-    vk::AttachmentDescription attachmentDescription = {
-            .format = format,
-            .samples = vk::SampleCountFlagBits::e1,
-            .loadOp = vk::AttachmentLoadOp::eClear,
-            .storeOp = vk::AttachmentStoreOp::eStore,
-            .stencilLoadOp = vk::AttachmentLoadOp::eDontCare,
-            .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
-            .initialLayout = vk::ImageLayout::eUndefined,
-            .finalLayout = vk::ImageLayout::ePresentSrcKHR
-    };
-
-    std::vector<vk::AttachmentDescription> attachments = {attachmentDescription};
-
-    vk::AttachmentReference attachmentReference = {
-            .attachment = 0,
-            .layout = vk::ImageLayout::eColorAttachmentOptimal,
-    };
-
-    std::vector<vk::AttachmentReference> attachmentReferences = {attachmentReference};
-
-    vk::SubpassDescription subpass = {
-            .colorAttachmentCount = static_cast<uint32_t>(attachmentReferences.size()),
-            .pColorAttachments = attachmentReferences.data()
-    };
-
-    std::vector<vk::SubpassDescription> subpasses = {subpass};
-
-    vk::RenderPassCreateInfo renderPassCreateInfo = {
-            .attachmentCount = static_cast<uint32_t>(attachments.size()),
-            .pAttachments = attachments.data(),
-            .subpassCount = static_cast<uint32_t>(subpasses.size()),
-            .pSubpasses = subpasses.data()
-    };
-
-    renderPass = device.createRenderPass(renderPassCreateInfo);
-}
-
-void Vulkan::createFramebuffer() {
-    framebuffer = device.createFramebuffer(
-            {
-                    .renderPass = renderPass,
-                    .attachmentCount = 1,
-                    .pAttachments = &swapChainImageView,
-                    .width = settings.windowWidth,
-                    .height = settings.windowHeight,
-                    .layers = 1
-            }
-    );
 }
 
 vk::ImageView Vulkan::createImageView(const vk::Image &image) const {
@@ -310,4 +222,119 @@ vk::ImageView Vulkan::createImageView(const vk::Image &image) const {
                             .layerCount = 1
                     }
             });
+}
+
+void Vulkan::createDescriptorSetLayout() {
+    std::vector<vk::DescriptorSetLayoutBinding> bindings = {
+            {
+                    .binding = 0,
+                    .descriptorType = vk::DescriptorType::eStorageImage,
+                    .descriptorCount = 1,
+                    .stageFlags = vk::ShaderStageFlagBits::eCompute
+            }
+    };
+
+    descriptorSetLayout = device.createDescriptorSetLayout(
+            {
+                    .bindingCount = static_cast<uint32_t>(bindings.size()),
+                    .pBindings = bindings.data()
+            });
+}
+
+void Vulkan::createDescriptorPool() {
+    std::vector<vk::DescriptorPoolSize> poolSizes = {
+            {
+                    .type = vk::DescriptorType::eStorageImage,
+                    .descriptorCount = 1
+            }
+    };
+
+    descriptorPool = device.createDescriptorPool(
+            {
+                    .maxSets = 1,
+                    .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+                    .pPoolSizes = poolSizes.data()
+            });
+}
+
+void Vulkan::createDescriptorSet() {
+    descriptorSet = device.allocateDescriptorSets(
+            {
+                    .descriptorPool = descriptorPool,
+                    .descriptorSetCount = 1,
+                    .pSetLayouts = &descriptorSetLayout
+            }).front();
+
+
+    vk::DescriptorImageInfo renderTargetImage = {
+            .imageView = swapChainImageView,
+            .imageLayout = vk::ImageLayout::eGeneral
+    };
+
+    std::vector<vk::WriteDescriptorSet> descriptorWrites = {
+            {
+                    .dstSet = descriptorSet,
+                    .dstBinding = 0,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = vk::DescriptorType::eStorageImage,
+                    .pImageInfo = &renderTargetImage
+            }
+    };
+
+    device.updateDescriptorSets(static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(),
+                                0, nullptr);
+}
+
+void Vulkan::createPipelineLayout() {
+    pipelineLayout = device.createPipelineLayout(
+            {
+                    .setLayoutCount = 1,
+                    .pSetLayouts = &descriptorSetLayout,
+                    .pushConstantRangeCount = 0,
+                    .pPushConstantRanges = nullptr
+            });
+}
+
+void Vulkan::createPipeline() {
+    std::vector<char> computeShaderCode = readBinaryFile(settings.computeShaderFile);
+
+    vk::ShaderModuleCreateInfo shaderModuleCreateInfo = {
+            .codeSize = computeShaderCode.size(),
+            .pCode = reinterpret_cast<const uint32_t*>(computeShaderCode.data())
+    };
+
+    vk::ShaderModule computeShaderModule = device.createShaderModule(shaderModuleCreateInfo);
+
+    vk::PipelineShaderStageCreateInfo shaderStage = {
+            .stage = vk::ShaderStageFlagBits::eCompute,
+            .module = computeShaderModule,
+            .pName = "main",
+    };
+
+    vk::ComputePipelineCreateInfo pipelineCreateInfo = {
+            .stage = shaderStage,
+            .layout = pipelineLayout
+    };
+
+    pipeline = device.createComputePipeline(nullptr, pipelineCreateInfo).value;
+
+    device.destroyShaderModule(computeShaderModule);
+}
+
+std::vector<char> Vulkan::readBinaryFile(const std::string &path) {
+    std::ifstream file(path, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open())
+        throw std::runtime_error("[Error] Failed to open file at '" + path + "'!");
+
+    size_t fileSize = (size_t) file.tellg();
+    std::vector<char> buffer(fileSize);
+
+    file.seekg(0);
+    file.read(buffer.data(), fileSize);
+
+    file.close();
+
+    return buffer;
 }

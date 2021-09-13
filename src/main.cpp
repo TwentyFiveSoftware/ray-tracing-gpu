@@ -5,7 +5,13 @@
 const uint32_t FPS = 50;
 
 int main() {
-    Vulkan vulkan({.windowWidth = 1200, .windowHeight = 675});
+    VulkanSettings settings = {
+            .windowWidth = 1200,
+            .windowHeight = 675,
+            .computeShaderFile = "shader.comp.spv"
+    };
+
+    Vulkan vulkan(settings);
 
     while (!vulkan.shouldExit()) {
         vulkan.update();

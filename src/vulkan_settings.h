@@ -1,7 +1,8 @@
 #pragma once
 
-#include <memory>
+#include <string>
 
 struct VulkanSettings {
     uint32_t windowWidth, windowHeight;
+    std::string computeShaderFile;
 };
