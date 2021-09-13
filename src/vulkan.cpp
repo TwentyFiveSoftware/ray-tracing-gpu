@@ -2,14 +2,21 @@
 #include <iostream>
 #include <set>
 
+const std::vector<const char*> requiredDeviceExtensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME
+};
+
 Vulkan::Vulkan(VulkanSettings settings) : settings(settings) {
     createWindow();
     createInstance();
     createSurface();
     pickPhysicalDevice();
+    findQueueFamilies();
+    createLogicalDevice();
 }
 
 Vulkan::~Vulkan() {
+    device.destroy();
     instance.destroySurfaceKHR(surface);
     instance.destroy();
     window.destroy();
@@ -98,7 +105,7 @@ void Vulkan::pickPhysicalDevice() {
 
     for (const vk::PhysicalDevice &d: physicalDevices) {
         std::vector<vk::ExtensionProperties> availableExtensions = d.enumerateDeviceExtensionProperties();
-        std::set<std::string> requiredExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        std::set<std::string> requiredExtensions(requiredDeviceExtensions.begin(), requiredDeviceExtensions.end());
 
         for (const vk::ExtensionProperties &extension: availableExtensions) {
             requiredExtensions.erase(extension.extensionName);
@@ -111,4 +118,82 @@ void Vulkan::pickPhysicalDevice() {
     }
 
     throw std::runtime_error("No GPU supporting all required features found!");
+}
+
+void Vulkan::findQueueFamilies() {
+    std::vector<vk::QueueFamilyProperties> queueFamilies = physicalDevice.getQueueFamilyProperties();
+
+    bool graphicsPipelineFound = false;
+    bool presentPipelineFound = false;
+    bool computePipelineFound = false;
+
+    for (uint32_t i = 0; i < queueFamilies.size(); i++) {
+        bool supportsGraphics = (queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics)
+                                == vk::QueueFlagBits::eGraphics;
+        bool supportsCompute = (queueFamilies[i].queueFlags & vk::QueueFlagBits::eCompute)
+                               == vk::QueueFlagBits::eCompute;
+        bool supportsPresenting = physicalDevice.getSurfaceSupportKHR(static_cast<uint32_t>(i), surface);
+
+        if (supportsGraphics && !graphicsPipelineFound) {
+            graphicsQueueFamily = i;
+            graphicsPipelineFound = true;
+        }
+
+        if (supportsPresenting && !presentPipelineFound) {
+            presentQueueFamily = i;
+            presentPipelineFound = true;
+        }
+
+        if (!supportsGraphics && supportsCompute && !computePipelineFound) {
+            computeQueueFamily = i;
+            computePipelineFound = true;
+        }
+
+        if (graphicsPipelineFound && presentPipelineFound && computePipelineFound)
+            break;
+    }
+
+    // if no compute only queue was found, try to find one, even if it has graphics capabilities
+    if (!computePipelineFound) {
+        for (uint32_t i = 0; i < queueFamilies.size(); i++) {
+            if ((queueFamilies[i].queueFlags & vk::QueueFlagBits::eCompute) == vk::QueueFlagBits::eCompute) {
+                computeQueueFamily = i;
+                break;
+            }
+        }
+    }
+}
+
+void Vulkan::createLogicalDevice() {
+    std::set<uint32_t> uniqueQueueFamilies = {graphicsQueueFamily, presentQueueFamily, computeQueueFamily};
+
+    float queuePriority = 1.0f;
+    std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
+    queueCreateInfos.reserve(uniqueQueueFamilies.size());
+
+    for (uint32_t queueFamily: uniqueQueueFamilies) {
+        queueCreateInfos.push_back(
+                {
+                        .queueFamilyIndex = queueFamily,
+                        .queueCount = 1,
+                        .pQueuePriorities = &queuePriority
+                });
+    }
+
+    vk::PhysicalDeviceFeatures deviceFeatures = {};
+
+    vk::DeviceCreateInfo deviceCreateInfo = {
+            .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
+            .pQueueCreateInfos = queueCreateInfos.data(),
+            .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtensions.size()),
+            .ppEnabledExtensionNames = requiredDeviceExtensions.data(),
+            .pEnabledFeatures = &deviceFeatures
+    };
+
+    device = physicalDevice.createDevice(deviceCreateInfo);
+
+    // get queues
+    graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
+    presentQueue = device.getQueue(presentQueueFamily, 0);
+    computeQueue = device.getQueue(computeQueueFamily, 0);
 }

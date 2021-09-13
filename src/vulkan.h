@@ -27,6 +27,10 @@ private:
     vk::PhysicalDevice physicalDevice;
     vk::Device device;
 
+    uint32_t graphicsQueueFamily, presentQueueFamily, computeQueueFamily;
+    vk::Queue graphicsQueue, presentQueue, computeQueue;
+
+
     void createWindow();
 
     void createInstance();
@@ -34,5 +38,9 @@ private:
     void createSurface();
 
     void pickPhysicalDevice();
+
+    void findQueueFamilies();
+
+    void createLogicalDevice();
 
 };
