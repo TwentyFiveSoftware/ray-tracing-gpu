@@ -30,6 +30,10 @@ private:
     uint32_t graphicsQueueFamily, presentQueueFamily, computeQueueFamily;
     vk::Queue graphicsQueue, presentQueue, computeQueue;
 
+    vk::CommandPool graphicsCommandPool, computeCommandPool;
+
+    vk::SwapchainKHR swapChain;
+    vk::RenderPass renderPass;
 
     void createWindow();
 
@@ -42,5 +46,11 @@ private:
     void findQueueFamilies();
 
     void createLogicalDevice();
+
+    void createCommandPools();
+
+    void createSwapChain();
+
+    void createRenderPass();
 
 };

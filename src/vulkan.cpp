@@ -13,9 +13,16 @@ Vulkan::Vulkan(VulkanSettings settings) : settings(settings) {
     pickPhysicalDevice();
     findQueueFamilies();
     createLogicalDevice();
+    createCommandPools();
+    createSwapChain();
+    createRenderPass();
 }
 
 Vulkan::~Vulkan() {
+    device.destroyRenderPass(renderPass);
+    device.destroySwapchainKHR(swapChain);
+    device.destroyCommandPool(graphicsCommandPool);
+    device.destroyCommandPool(computeCommandPool);
     device.destroy();
     instance.destroySurfaceKHR(surface);
     instance.destroy();
@@ -196,4 +203,75 @@ void Vulkan::createLogicalDevice() {
     graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
     presentQueue = device.getQueue(presentQueueFamily, 0);
     computeQueue = device.getQueue(computeQueueFamily, 0);
+}
+
+void Vulkan::createCommandPools() {
+    graphicsCommandPool = device.createCommandPool({.queueFamilyIndex = graphicsQueueFamily});
+    computeCommandPool = device.createCommandPool({.queueFamilyIndex = computeQueueFamily});
+}
+
+void Vulkan::createSwapChain() {
+    vk::SwapchainCreateInfoKHR swapChainCreateInfo = {
+            .surface = surface,
+            .minImageCount = 2,
+            .imageFormat = vk::Format::eB8G8R8A8Srgb,
+            .imageColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear,
+            .imageExtent = {.width = settings.windowWidth, .height = settings.windowHeight},
+            .imageArrayLayers = 1,
+            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+            .imageSharingMode = vk::SharingMode::eExclusive,
+            .preTransform = physicalDevice.getSurfaceCapabilitiesKHR(surface).currentTransform,
+            .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+            .presentMode = vk::PresentModeKHR::eFifoRelaxed,
+            .clipped = true,
+            .oldSwapchain = nullptr
+    };
+
+    if (presentQueueFamily != graphicsQueueFamily) {
+        uint32_t queueFamilyIndices[2] = {graphicsQueueFamily, presentQueueFamily};
+
+        swapChainCreateInfo.imageSharingMode = vk::SharingMode::eConcurrent;
+        swapChainCreateInfo.queueFamilyIndexCount = 2;
+        swapChainCreateInfo.pQueueFamilyIndices = queueFamilyIndices;
+    }
+
+    swapChain = device.createSwapchainKHR(swapChainCreateInfo);
+}
+
+void Vulkan::createRenderPass() {
+    vk::AttachmentDescription attachmentDescription = {
+            .format = vk::Format::eB8G8R8A8Srgb,
+            .samples = vk::SampleCountFlagBits::e1,
+            .loadOp = vk::AttachmentLoadOp::eClear,
+            .storeOp = vk::AttachmentStoreOp::eStore,
+            .stencilLoadOp = vk::AttachmentLoadOp::eDontCare,
+            .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+            .initialLayout = vk::ImageLayout::eUndefined,
+            .finalLayout = vk::ImageLayout::ePresentSrcKHR
+    };
+
+    std::vector<vk::AttachmentDescription> attachments = {attachmentDescription};
+
+    vk::AttachmentReference attachmentReference = {
+            .attachment = 0,
+            .layout = vk::ImageLayout::eColorAttachmentOptimal,
+    };
+
+    std::vector<vk::AttachmentReference> attachmentReferences = {attachmentReference};
+
+    vk::SubpassDescription subpass = {
+            .colorAttachmentCount = static_cast<uint32_t>(attachmentReferences.size()),
+            .pColorAttachments = attachmentReferences.data()
+    };
+
+    std::vector<vk::SubpassDescription> subpasses = {subpass};
+
+    vk::RenderPassCreateInfo renderPassCreateInfo = {
+            .attachmentCount = static_cast<uint32_t>(attachments.size()),
+            .pAttachments = attachments.data(),
+            .subpassCount = static_cast<uint32_t>(subpasses.size()),
+            .pSubpasses = subpasses.data()
+    };
+
+    renderPass = device.createRenderPass(renderPassCreateInfo);
 }
