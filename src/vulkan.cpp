@@ -102,7 +102,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageFunc(VkDebugUtilsMessageSeverityFlagB
 }
 
 void Vulkan::createInstance() {
-    vk::ApplicationInfo applicationInfo{
+    vk::ApplicationInfo applicationInfo = {
             .pApplicationName = "Ray Tracing",
             .applicationVersion = 1,
             .pEngineName = "Ray Tracing",
@@ -225,7 +225,7 @@ void Vulkan::createSwapChain() {
             .imageSharingMode = vk::SharingMode::eExclusive,
             .preTransform = physicalDevice.getSurfaceCapabilitiesKHR(surface).currentTransform,
             .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
-            .presentMode = vk::PresentModeKHR::eFifoRelaxed,
+            .presentMode = presentMode,
             .clipped = true,
             .oldSwapchain = nullptr
     };

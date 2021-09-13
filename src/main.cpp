@@ -1,6 +1,4 @@
 #include "vulkan.h"
-#include <thread>
-#include <chrono>
 
 int main() {
     VulkanSettings settings = {
@@ -12,10 +10,8 @@ int main() {
 
     Vulkan vulkan(settings);
 
-    vulkan.render();
-
     while (!vulkan.shouldExit()) {
         vulkan.update();
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        vulkan.render();
     }
 }
