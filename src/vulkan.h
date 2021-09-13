@@ -16,7 +16,10 @@ public:
 
     void update();
 
+    void render();
+
     [[nodiscard]] bool shouldExit() const;
+
 
 private:
     VulkanSettings settings;
@@ -46,6 +49,9 @@ private:
     vk::Pipeline pipeline;
 
     vk::CommandBuffer commandBuffer;
+
+    vk::Fence fence;
+    vk::Semaphore semaphore;
 
     void createWindow();
 
@@ -78,5 +84,9 @@ private:
     [[nodiscard]] static std::vector<char> readBinaryFile(const std::string &path);
 
     void createCommandBuffer();
+
+    void createFence();
+
+    void createSemaphore();
 
 };

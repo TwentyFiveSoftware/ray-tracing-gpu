@@ -22,9 +22,14 @@ Vulkan::Vulkan(VulkanSettings settings) : settings(std::move(settings)) {
     createDescriptorSet();
     createPipelineLayout();
     createPipeline();
+    createCommandBuffer();
+    createFence();
+    createSemaphore();
 }
 
 Vulkan::~Vulkan() {
+    device.destroySemaphore(semaphore);
+    device.destroyFence(fence);
     device.destroyPipeline(pipeline);
     device.destroyPipelineLayout(pipelineLayout);
     device.destroyDescriptorSetLayout(descriptorSetLayout);
@@ -41,6 +46,31 @@ Vulkan::~Vulkan() {
 
 void Vulkan::update() {
     vkfw::pollEvents();
+}
+
+void Vulkan::render() {
+    uint32_t swapChainImageIndex = device.acquireNextImageKHR(swapChain, UINT64_MAX, semaphore).value;
+
+    vk::SubmitInfo submitInfo = {
+            .commandBufferCount = 1,
+            .pCommandBuffers = &commandBuffer
+    };
+
+    device.resetFences(fence);
+    queue.submit(1, &submitInfo, fence);
+
+    device.waitForFences(1, &fence, true, UINT64_MAX);
+
+    vk::PresentInfoKHR presentInfo = {
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &semaphore,
+            .swapchainCount = 1,
+            .pSwapchains = &swapChain,
+            .pImageIndices = &swapChainImageIndex
+    };
+
+    device.resetFences(fence);
+    queue.presentKHR(presentInfo);
 }
 
 bool Vulkan::shouldExit() const {
@@ -348,11 +378,20 @@ void Vulkan::createCommandBuffer() {
             }).front();
 
 
+    vk::CommandBufferBeginInfo beginInfo = {};
     std::vector<vk::DescriptorSet> descriptorSets = {descriptorSet};
 
-    commandBuffer.begin({});
+    commandBuffer.begin(&beginInfo);
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
     commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout, 0, descriptorSets, nullptr);
     commandBuffer.dispatch(settings.computeShaderGroupCount, settings.computeShaderGroupCount, 1);
     commandBuffer.end();
+}
+
+void Vulkan::createFence() {
+    fence = device.createFence({});
+}
+
+void Vulkan::createSemaphore() {
+    semaphore = device.createSemaphore({});
 }

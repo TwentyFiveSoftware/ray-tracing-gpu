@@ -14,9 +14,12 @@ int main() {
 
     Vulkan vulkan(settings);
 
-    while (!vulkan.shouldExit()) {
-        vulkan.update();
+    vulkan.update();
+    vulkan.render();
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / FPS));
-    }
+//    while (!vulkan.shouldExit()) {
+//        vulkan.update();
+//
+//        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / FPS));
+//    }
 }
