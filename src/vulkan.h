@@ -45,6 +45,7 @@ private:
     vk::PipelineLayout pipelineLayout;
     vk::Pipeline pipeline;
 
+    vk::CommandBuffer commandBuffer;
 
     void createWindow();
 
@@ -75,5 +76,7 @@ private:
     void createPipeline();
 
     [[nodiscard]] static std::vector<char> readBinaryFile(const std::string &path);
+
+    void createCommandBuffer();
 
 };

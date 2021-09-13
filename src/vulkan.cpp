@@ -338,3 +338,21 @@ std::vector<char> Vulkan::readBinaryFile(const std::string &path) {
 
     return buffer;
 }
+
+void Vulkan::createCommandBuffer() {
+    commandBuffer = device.allocateCommandBuffers(
+            {
+                    .commandPool = commandPool,
+                    .level = vk::CommandBufferLevel::ePrimary,
+                    .commandBufferCount = 1
+            }).front();
+
+
+    std::vector<vk::DescriptorSet> descriptorSets = {descriptorSet};
+
+    commandBuffer.begin({});
+    commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
+    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout, 0, descriptorSets, nullptr);
+    commandBuffer.dispatch(settings.computeShaderGroupCount, settings.computeShaderGroupCount, 1);
+    commandBuffer.end();
+}
