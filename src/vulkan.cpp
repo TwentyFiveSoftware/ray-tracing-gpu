@@ -216,8 +216,8 @@ void Vulkan::createSwapChain() {
     vk::SwapchainCreateInfoKHR swapChainCreateInfo = {
             .surface = surface,
             .minImageCount = 1,
-            .imageFormat = vk::Format::eB8G8R8A8Srgb,
-            .imageColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear,
+            .imageFormat = format,
+            .imageColorSpace = colorSpace,
             .imageExtent = {.width = settings.windowWidth, .height = settings.windowHeight},
             .imageArrayLayers = 1,
             .imageUsage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage,
@@ -247,7 +247,7 @@ void Vulkan::createSwapChain() {
 
 void Vulkan::createRenderPass() {
     vk::AttachmentDescription attachmentDescription = {
-            .format = vk::Format::eB8G8R8A8Srgb,
+            .format = format,
             .samples = vk::SampleCountFlagBits::e1,
             .loadOp = vk::AttachmentLoadOp::eClear,
             .storeOp = vk::AttachmentStoreOp::eStore,
@@ -301,7 +301,7 @@ vk::ImageView Vulkan::createImageView(const vk::Image &image) const {
             {
                     .image = image,
                     .viewType = vk::ImageViewType::e2D,
-                    .format = vk::Format::eB8G8R8A8Srgb,
+                    .format = format,
                     .subresourceRange = {
                             .aspectMask = vk::ImageAspectFlagBits::eColor,
                             .baseMipLevel = 0,
