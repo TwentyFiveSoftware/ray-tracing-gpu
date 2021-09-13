@@ -33,7 +33,12 @@ private:
     vk::CommandPool graphicsCommandPool, computeCommandPool;
 
     vk::SwapchainKHR swapChain;
+    vk::Image swapChainImage;
+    vk::ImageView swapChainImageView;
+
     vk::RenderPass renderPass;
+    vk::Framebuffer framebuffer;
+
 
     void createWindow();
 
@@ -52,5 +57,9 @@ private:
     void createSwapChain();
 
     void createRenderPass();
+
+    void createFramebuffer();
+
+    [[nodiscard]] vk::ImageView createImageView(const vk::Image &image) const;
 
 };

@@ -19,7 +19,9 @@ Vulkan::Vulkan(VulkanSettings settings) : settings(settings) {
 }
 
 Vulkan::~Vulkan() {
+    device.destroyFramebuffer(framebuffer);
     device.destroyRenderPass(renderPass);
+    device.destroyImageView(swapChainImageView);
     device.destroySwapchainKHR(swapChain);
     device.destroyCommandPool(graphicsCommandPool);
     device.destroyCommandPool(computeCommandPool);
@@ -213,12 +215,12 @@ void Vulkan::createCommandPools() {
 void Vulkan::createSwapChain() {
     vk::SwapchainCreateInfoKHR swapChainCreateInfo = {
             .surface = surface,
-            .minImageCount = 2,
+            .minImageCount = 1,
             .imageFormat = vk::Format::eB8G8R8A8Srgb,
             .imageColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear,
             .imageExtent = {.width = settings.windowWidth, .height = settings.windowHeight},
             .imageArrayLayers = 1,
-            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage,
             .imageSharingMode = vk::SharingMode::eExclusive,
             .preTransform = physicalDevice.getSurfaceCapabilitiesKHR(surface).currentTransform,
             .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
@@ -236,6 +238,11 @@ void Vulkan::createSwapChain() {
     }
 
     swapChain = device.createSwapchainKHR(swapChainCreateInfo);
+
+    // swap chain images
+    std::vector<vk::Image> swapChainImages = device.getSwapchainImagesKHR(swapChain);
+    swapChainImage = swapChainImages.front();
+    swapChainImageView = createImageView(swapChainImage);
 }
 
 void Vulkan::createRenderPass() {
@@ -274,4 +281,33 @@ void Vulkan::createRenderPass() {
     };
 
     renderPass = device.createRenderPass(renderPassCreateInfo);
+}
+
+void Vulkan::createFramebuffer() {
+    framebuffer = device.createFramebuffer(
+            {
+                    .renderPass = renderPass,
+                    .attachmentCount = 1,
+                    .pAttachments = &swapChainImageView,
+                    .width = settings.windowWidth,
+                    .height = settings.windowHeight,
+                    .layers = 1
+            }
+    );
+}
+
+vk::ImageView Vulkan::createImageView(const vk::Image &image) const {
+    return device.createImageView(
+            {
+                    .image = image,
+                    .viewType = vk::ImageViewType::e2D,
+                    .format = vk::Format::eB8G8R8A8Srgb,
+                    .subresourceRange = {
+                            .aspectMask = vk::ImageAspectFlagBits::eColor,
+                            .baseMipLevel = 0,
+                            .levelCount = 1,
+                            .baseArrayLayer = 0,
+                            .layerCount = 1
+                    }
+            });
 }
