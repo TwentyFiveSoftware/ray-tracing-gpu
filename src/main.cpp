@@ -2,8 +2,6 @@
 #include <thread>
 #include <chrono>
 
-const uint32_t FPS = 50;
-
 int main() {
     VulkanSettings settings = {
             .windowWidth = 1200,
@@ -14,12 +12,10 @@ int main() {
 
     Vulkan vulkan(settings);
 
-    vulkan.update();
     vulkan.render();
 
-//    while (!vulkan.shouldExit()) {
-//        vulkan.update();
-//
-//        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / FPS));
-//    }
+    while (!vulkan.shouldExit()) {
+        vulkan.update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
 }

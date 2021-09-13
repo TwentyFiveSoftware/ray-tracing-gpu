@@ -377,6 +377,39 @@ void Vulkan::createCommandBuffer() {
                     .commandBufferCount = 1
             }).front();
 
+    vk::ImageMemoryBarrier imageBarrierToGeneral = {
+            .srcAccessMask = vk::AccessFlagBits::eNoneKHR,
+            .dstAccessMask = vk::AccessFlagBits::eShaderWrite,
+            .oldLayout = vk::ImageLayout::eUndefined,
+            .newLayout = vk::ImageLayout::eGeneral,
+            .srcQueueFamilyIndex = queueFamily,
+            .dstQueueFamilyIndex = queueFamily,
+            .image = swapChainImage,
+            .subresourceRange = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+            },
+    };
+
+    vk::ImageMemoryBarrier imageBarrierToPresent = {
+            .srcAccessMask = vk::AccessFlagBits::eShaderWrite,
+            .dstAccessMask = vk::AccessFlagBits::eMemoryRead,
+            .oldLayout = vk::ImageLayout::eGeneral,
+            .newLayout = vk::ImageLayout::ePresentSrcKHR,
+            .srcQueueFamilyIndex = queueFamily,
+            .dstQueueFamilyIndex = queueFamily,
+            .image = swapChainImage,
+            .subresourceRange = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+            },
+    };
 
     vk::CommandBufferBeginInfo beginInfo = {};
     std::vector<vk::DescriptorSet> descriptorSets = {descriptorSet};
@@ -384,7 +417,20 @@ void Vulkan::createCommandBuffer() {
     commandBuffer.begin(&beginInfo);
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
     commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout, 0, descriptorSets, nullptr);
-    commandBuffer.dispatch(settings.computeShaderGroupCount, settings.computeShaderGroupCount, 1);
+
+    commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
+                                  vk::DependencyFlagBits::eByRegion, 0, nullptr,
+                                  0, nullptr, 1, &imageBarrierToGeneral);
+
+    commandBuffer.dispatch(
+            static_cast<uint32_t>(std::ceil(float(settings.windowWidth) / float(settings.computeShaderGroupCount))),
+            static_cast<uint32_t>(std::ceil(float(settings.windowHeight) / float(settings.computeShaderGroupCount))),
+            1);
+
+    commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eBottomOfPipe,
+                                  vk::DependencyFlagBits::eByRegion, 0, nullptr,
+                                  0, nullptr, 1, &imageBarrierToPresent);
+
     commandBuffer.end();
 }
 
