@@ -68,26 +68,27 @@ const vec3 BACKGROUND_COLOR = vec3(0.70f, 0.80f, 1.00f);
 
 // VARIABLES
 const Material materials[4] = Material[4](
-Material(MATERIAL_TYPE_DIFFUSE, vec3(0.8f, 0.8f, 0.0f), 0.0f),
-Material(MATERIAL_TYPE_DIFFUSE, vec3(0.7f, 0.3f, 0.3f), 0.0f),
-Material(MATERIAL_TYPE_METAL, vec3(0.8f, 0.8f, 0.8f), 0.5f),
+Material(MATERIAL_TYPE_DIFFUSE, vec3(0.5f, 0.5f, 0.5f), 0.0f),
+Material(MATERIAL_TYPE_DIFFUSE, vec3(0.4f, 0.2f, 0.1f), 0.0f),
+Material(MATERIAL_TYPE_METAL, vec3(0.7f, 0.6f, 0.5f), 0.0f),
 Material(MATERIAL_TYPE_REFRACTIVE, vec3(1.0f), 1.5f)
 );
 
 const uint spheresSize = 4;
 
 const Sphere spheres[spheresSize] = Sphere[spheresSize](
-Sphere(vec3(0.0f, -100.5f, 1.0f), 100.0f, 0),
-Sphere(vec3(0.0f, 0.0f, 1.0f), 0.5f, 1),
-Sphere(vec3(1.5f, 0.25f, 1.5f), 0.5f, 2),
-Sphere(vec3(-1.5f, 0.0f, 1.0f), 0.5f, 3)
+Sphere(vec3(0.0f, -1000.0f, 1.0f), 1000.0f, 0),
+Sphere(vec3(-4.0f, 1.0f, 0.0f), 1.0f, 1),
+Sphere(vec3(4.0f, 1.0f, 0.0f), 1.0f, 2),
+Sphere(vec3(0.0f, 1.0f, 0.0f), 1.0f, 3)
 );
 
-const Camera camera = Camera(25.0f, 0.1f, 10.0f, vec3(12.0f, 2.0f, -3.0f), vec3(0.0f), vec3(0.0f, 1.0f, 0.0f));
+const Camera camera = Camera(25.0f, 0.1f, 10.0f, vec3(13.0f, 2.0f, -3.0f), vec3(0.0f), vec3(0.0f, 1.0f, 0.0f));
+//const Camera camera = Camera(60.0f, 0.0f, 10.0f, vec3(0.0f, 0.0f, -2.0f), vec3(0.0f, 0.0f, 1.0f), vec3(0.0f, 1.0f, 0.0f));
 
 
 // METHODS
-vec3 calculateRayColor(in Ray ray, const uint currentSample);
+vec3 calculateRayColor(in Ray ray);
 ScatterRecord scatter(const Ray ray, const HitRecord record);
 vec3 rayAt(const Ray ray, const float t);
 HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const float tMax);
@@ -116,7 +117,7 @@ void main() {
         const float v = (gl_GlobalInvocationID.y + random()) / imageSize.y;
         Ray ray = getCameraRay(viewport, vec2(u, v));
 
-        summedPixelColor += calculateRayColor(ray, i);
+        summedPixelColor += calculateRayColor(ray);
     }
 
     const vec3 pixelColor = sqrt(summedPixelColor / float(SAMPLES));
@@ -126,7 +127,7 @@ void main() {
 
 
 // RENDERING
-vec3 calculateRayColor(in Ray ray, const uint currentSample) {
+vec3 calculateRayColor(in Ray ray) {
     vec3 reflectedColor = vec3(1.0f);
     vec3 lightSourceColor = vec3(0.0f);// black, if ray exceeds bounce limit
 
@@ -309,7 +310,7 @@ bool canRefract(const vec3 vector, const vec3 normal, const float eta) {
 }
 
 float reflectanceFactor(const vec3 vector, const vec3 normal, const float eta) {
-    float r = pow((1.0f - eta) / (1.0f + eta), 2.0f);
+    const float r = pow((1.0f - eta) / (1.0f + eta), 2.0f);
     return r + (1.0f - r) * pow(1.0f - dot(-vector, normal), 5.0f);
 }
 
@@ -330,11 +331,11 @@ Viewport calculateViewport(const float aspectRatio) {
 }
 
 Ray getCameraRay(const Viewport viewport, const vec2 uv) {
-    const vec3 random = (camera.aperture / 2.0f) * randomUnitVector();
-    const vec3 offset = viewport.cameraUp * random.x + viewport.cameraRight * random.y;
+    const vec2 random = (camera.aperture / 2.0f) * normalize(vec2(randomInInterval(-1.0f, 1.0f), randomInInterval(-1.0f, 1.0f)));
+    const vec3 offset = viewport.cameraRight * random.x + viewport.cameraUp * random.y;
 
     const vec3 from = camera.lookFrom + offset;
     const vec3 to = viewport.upperLeftCorner + viewport.horizontal * uv.x - viewport.vertical * uv.y;
 
-    return Ray(from, to - from);
+    return Ray(from, normalize(to - from));
 }
