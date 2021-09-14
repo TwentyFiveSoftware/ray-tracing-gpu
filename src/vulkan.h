@@ -20,6 +20,8 @@ public:
 
     [[nodiscard]] bool shouldExit() const;
 
+    void saveScreenshot(const std::string &name);
+
 
 private:
     VulkanSettings settings;
@@ -89,5 +91,8 @@ private:
     void createFence();
 
     void createSemaphore();
+
+    [[nodiscard]] uint32_t findMemoryTypeIndex(const uint32_t &memoryTypeBits,
+                                               const vk::MemoryPropertyFlags &properties);
 
 };

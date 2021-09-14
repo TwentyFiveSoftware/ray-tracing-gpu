@@ -1,8 +1,11 @@
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+
 #include "vulkan.h"
 #include <iostream>
 #include <set>
 #include <fstream>
 #include <utility>
+#include <stb_image_write.h>
 
 const std::vector<const char*> requiredDeviceExtensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
@@ -239,7 +242,8 @@ void Vulkan::createSwapChain() {
             .imageColorSpace = colorSpace,
             .imageExtent = {.width = settings.windowWidth, .height = settings.windowHeight},
             .imageArrayLayers = 1,
-            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage,
+            .imageUsage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage |
+                          vk::ImageUsageFlagBits::eTransferSrc,
             .imageSharingMode = vk::SharingMode::eExclusive,
             .preTransform = physicalDevice.getSurfaceCapabilitiesKHR(surface).currentTransform,
             .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
@@ -458,4 +462,115 @@ void Vulkan::createFence() {
 
 void Vulkan::createSemaphore() {
     semaphore = device.createSemaphore({});
+}
+
+uint32_t Vulkan::findMemoryTypeIndex(const uint32_t &memoryTypeBits, const vk::MemoryPropertyFlags &properties) {
+    vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
+
+    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++) {
+        if ((memoryTypeBits & (1 << i)) && (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("Unable to find suitable memory type!");
+}
+
+void Vulkan::saveScreenshot(const std::string &name) {
+    vk::Buffer screenshotBuffer = device.createBuffer(
+            {
+                    .size = settings.windowWidth * settings.windowHeight * 4,
+                    .usage  = vk::BufferUsageFlagBits::eTransferDst,
+                    .sharingMode = vk::SharingMode::eExclusive
+            });
+
+    vk::MemoryRequirements memoryRequirements = device.getBufferMemoryRequirements(screenshotBuffer);
+
+    vk::DeviceMemory screenshotBufferMemory = device.allocateMemory(
+            {
+                    .allocationSize = memoryRequirements.size,
+                    .memoryTypeIndex = findMemoryTypeIndex(memoryRequirements.memoryTypeBits,
+                                                           vk::MemoryPropertyFlagBits::eHostVisible |
+                                                           vk::MemoryPropertyFlagBits::eHostCoherent)
+            });
+
+    device.bindBufferMemory(screenshotBuffer, screenshotBufferMemory, 0);
+
+    vk::CommandBuffer screenshotCommandBuffer = device.allocateCommandBuffers(
+            {
+                    .commandPool = commandPool,
+                    .level = vk::CommandBufferLevel::ePrimary,
+                    .commandBufferCount = 1
+            }).front();
+
+
+    vk::ImageMemoryBarrier imageBarrierToTransferSrc = {
+            .srcAccessMask = vk::AccessFlagBits::eMemoryRead,
+            .dstAccessMask = vk::AccessFlagBits::eMemoryRead,
+            .oldLayout = vk::ImageLayout::ePresentSrcKHR,
+            .newLayout = vk::ImageLayout::eTransferSrcOptimal,
+            .srcQueueFamilyIndex = computeQueueFamily,
+            .dstQueueFamilyIndex = computeQueueFamily,
+            .image = swapChainImage,
+            .subresourceRange = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+            },
+    };
+
+    std::vector<vk::BufferImageCopy> screenshotImageCopy = {
+            {
+                    .bufferOffset = 0,
+                    .bufferRowLength = settings.windowWidth,
+                    .bufferImageHeight = settings.windowHeight,
+                    .imageSubresource = {
+                            .aspectMask = vk::ImageAspectFlagBits::eColor,
+                            .mipLevel = 0,
+                            .baseArrayLayer = 0,
+                            .layerCount = 1
+                    },
+                    .imageOffset = {.x = 0, .y = 0, .z = 0},
+                    .imageExtent = {
+                            .width = settings.windowWidth,
+                            .height = settings.windowHeight,
+                            .depth = 1
+                    },
+            }
+    };
+
+
+    vk::CommandBufferBeginInfo beginInfo = {.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
+    screenshotCommandBuffer.begin(&beginInfo);
+
+
+    screenshotCommandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer,
+                                            vk::DependencyFlagBits::eByRegion, 0, nullptr,
+                                            0, nullptr, 1, &imageBarrierToTransferSrc);
+
+    screenshotCommandBuffer.copyImageToBuffer(swapChainImage, vk::ImageLayout::eTransferSrcOptimal, screenshotBuffer,
+                                              screenshotImageCopy);
+
+    screenshotCommandBuffer.end();
+
+    vk::Fence screenshotFence = device.createFence({});
+
+    vk::SubmitInfo submitInfo = {
+            .commandBufferCount = 1,
+            .pCommandBuffers = &screenshotCommandBuffer
+    };
+
+    computeQueue.submit(1, &submitInfo, screenshotFence);
+
+    device.waitForFences(1, &screenshotFence, true, UINT64_MAX);
+    device.destroy(screenshotFence);
+
+    void* data = device.mapMemory(screenshotBufferMemory, 0, memoryRequirements.size);
+    stbi_write_png(name.c_str(), settings.windowWidth, settings.windowHeight, 4, data, settings.windowWidth * 4);
+    device.unmapMemory(screenshotBufferMemory);
+
+    device.destroyBuffer(screenshotBuffer);
+    device.freeMemory(screenshotBufferMemory);
 }
