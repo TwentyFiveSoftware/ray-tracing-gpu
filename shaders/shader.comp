@@ -10,6 +10,14 @@ struct Ray {
     vec3 direction;
 };
 
+struct HitRecord {
+    bool doesHit;
+    float t;
+    vec3 point;
+    vec3 normal;
+    bool frontFace;
+};
+
 struct Sphere {
     vec3 center;
     float radius;
@@ -22,7 +30,7 @@ Sphere sphere1 = Sphere(vec3(0.0f, 0.0f, 1.0f), 0.5f);
 // METHODS
 vec3 calculateRayColor(const Ray ray);
 vec3 rayAt(const Ray ray, const float t);
-float hitSphere(const Ray ray, const Sphere sphere);
+HitRecord hitSphere(const Ray ray, const Sphere sphere);
 
 
 // MAIN
@@ -45,13 +53,12 @@ void main() {
 
 // RENDERING
 vec3 calculateRayColor(const Ray ray) {
-    float t = hitSphere(ray, sphere1);
-    if (t > 0.0f) {
-        const vec3 normal = normalize(rayAt(ray, t) - sphere1.center);
-        return 0.5f * (normal + 1.0f);
+    HitRecord record = hitSphere(ray, sphere1);
+    if (record.doesHit) {
+        return 0.5f * (record.normal + 1.0f);
     }
 
-    t = (ray.direction.y + 1.0f) / 2.0f;
+    const float t = (ray.direction.y + 1.0f) / 2.0f;
     return (1.0f - t) * vec3(1.0f, 1.0f, 1.0f) + t * vec3(0.5f, 0.7f, 1.0f);
 }
 
@@ -63,7 +70,7 @@ vec3 rayAt(const Ray ray, const float t) {
 
 
 // SPHERE
-float hitSphere(const Ray ray, const Sphere sphere) {
+HitRecord hitSphere(const Ray ray, const Sphere sphere) {
     const vec3 CO = ray.origin - sphere.center;
     const float a = dot(ray.direction, ray.direction);
     const float halfB = dot(CO, ray.direction);
@@ -72,8 +79,15 @@ float hitSphere(const Ray ray, const Sphere sphere) {
     const float D = halfB * halfB - a * c;
 
     if (D < 0) {
-        return -1.0f;
+        return HitRecord(false, 0.0f, vec3(0.0f), vec3(0.0f), true);
     }
 
-    return (-halfB - sqrt(D)) / a;
+    const float t = (-halfB - sqrt(D)) / a;
+    const vec3 point = rayAt(ray, t);
+
+    const vec3 outwardNormal = normalize(point - sphere.center);
+    const bool frontFace = dot(ray.direction, outwardNormal) < 0.0f;
+    const vec3 normal = frontFace ? outwardNormal : -outwardNormal;
+
+    return HitRecord(true, t, point, normal, frontFace);
 }
