@@ -51,13 +51,18 @@ struct Viewport {
 };
 
 // INPUTS
-layout(binding = 0, rgba8_snorm) uniform writeonly image2D renderTarget;
+layout(binding = 0, rgba8_snorm) uniform image2D renderTarget;
 
 layout(binding = 1) uniform Scene {
     uint sphereAmount;
     Sphere spheres[500];
     Material materials[500];
 } scene;
+
+layout(binding = 2) uniform RenderPassData {
+    uint number;
+    uint samples;
+} renderPassData;
 
 
 // ENUMS
@@ -67,7 +72,7 @@ const uint MATERIAL_TYPE_REFRACTIVE = 2;
 
 // CONSTANTS
 const float MAX_RAY_COLLISION_DISTANCE = 100000000.0f;
-const uint SAMPLES = 1000;
+//const uint SAMPLES = 100;
 const uint MAX_DEPTH = 50;
 const vec3 BACKGROUND_COLOR = vec3(0.70f, 0.80f, 1.00f);
 
@@ -101,7 +106,7 @@ void main() {
     const Viewport viewport = calculateViewport(aspectRatio);
 
     vec3 summedPixelColor = vec3(0.0f);
-    for (uint i = 0; i < SAMPLES; i++) {
+    for (uint i = 0; i < renderPassData.samples; i++) {
         const float u = (gl_GlobalInvocationID.x + random()) / imageSize.x;
         const float v = (gl_GlobalInvocationID.y + random()) / imageSize.y;
         Ray ray = getCameraRay(viewport, vec2(u, v));
@@ -109,9 +114,12 @@ void main() {
         summedPixelColor += calculateRayColor(ray);
     }
 
-    const vec3 pixelColor = sqrt(summedPixelColor / float(SAMPLES));
+    const vec3 pixelColor = sqrt(summedPixelColor / float(renderPassData.samples));
 
-    imageStore(renderTarget, ivec2(gl_GlobalInvocationID.xy), vec4(pixelColor, 1.0f));
+    const vec3 currentColor = imageLoad(renderTarget, ivec2(gl_GlobalInvocationID.xy)).rgb;
+    const vec3 newPixelColor = renderPassData.number == 1 ? pixelColor : 0.5f * currentColor + 0.5f * pixelColor;
+
+    imageStore(renderTarget, ivec2(gl_GlobalInvocationID.xy), vec4(newPixelColor, 1.0f));
 }
 
 
@@ -266,9 +274,9 @@ uint currentRandomOffset = 0;
 
 float random() {
     currentRandomOffset += 1;
-    const uvec3 v = floatBitsToUint(vec3(gl_GlobalInvocationID.xy, currentRandomOffset));
+    const uvec4 v = floatBitsToUint(vec4(gl_GlobalInvocationID.xy, renderPassData.number, currentRandomOffset));
 
-    uint m = hash(v.x ^ hash(v.y) ^ hash(v.z));
+    uint m = hash(v.x ^ hash(v.y) ^ hash(v.z) ^ hash(v.w));
     m &= 0x007FFFFFu;
     m |= 0x3F800000u;
     return uintBitsToFloat(m) - 1.0f;

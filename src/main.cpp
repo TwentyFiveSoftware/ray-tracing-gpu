@@ -2,7 +2,9 @@
 #include <iostream>
 #include <thread>
 #include "vulkan.h"
-#include "scene.h"
+
+const uint32_t renderPasses = 20;
+const uint32_t samples = 5000;
 
 int main() {
     VulkanSettings settings = {
@@ -17,16 +19,31 @@ int main() {
     Vulkan vulkan(settings, scene);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    std::cout << "Start rendering..." << std::endl;
 
     auto renderBeginTime = std::chrono::steady_clock::now();
 
-    vulkan.render();
+    for (uint32_t pass = 1; pass <= renderPasses; pass++) {
+        RenderPassData renderPassData = {
+                .number = pass,
+                .samples = samples / renderPasses
+        };
 
-    auto renderTime = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::cout << "Render pass " << pass << " / " << renderPasses << std::endl;
+        auto renderPassBeginTime = std::chrono::steady_clock::now();
+
+        vulkan.render(renderPassData);
+
+        auto renderPassTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - renderPassBeginTime).count();
+        std::cout << "Render pass completed in " << renderPassTime << " ms" << std::endl << std::endl;
+
+        vulkan.update();
+    }
+
+    auto renderTime = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - renderBeginTime).count();
-
-    std::cout << "Rendered in " << (float(renderTime) / 1000.0f) << " ms" << std::endl;
+    std::cout << "Rendering completed: " << samples << " samples rendered in "
+              << renderTime << " ms" << std::endl << std::endl;
 
     std::cout << "Saving screenshot..." << std::endl;
     vulkan.saveScreenshot("render.png");

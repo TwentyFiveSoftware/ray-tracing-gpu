@@ -20,6 +20,7 @@ Vulkan::Vulkan(VulkanSettings settings, Scene scene) :
     findQueueFamilies();
     createLogicalDevice();
     createSceneBuffer();
+    createRenderPassDataBuffer();
     createCommandPool();
     createSwapChain();
     createDescriptorSetLayout();
@@ -33,6 +34,8 @@ Vulkan::Vulkan(VulkanSettings settings, Scene scene) :
 }
 
 Vulkan::~Vulkan() {
+    device.destroyBuffer(renderPassDataBuffer);
+    device.freeMemory(renderPassDataBufferMemory);
     device.destroyBuffer(sceneBuffer);
     device.freeMemory(sceneBufferMemory);
     device.destroySemaphore(semaphore);
@@ -55,7 +58,9 @@ void Vulkan::update() {
     vkfw::pollEvents();
 }
 
-void Vulkan::render() {
+void Vulkan::render(const RenderPassData &renderPassData) {
+    updateRenderPassDataBuffer(renderPassData);
+
     uint32_t swapChainImageIndex = device.acquireNextImageKHR(swapChain, UINT64_MAX, semaphore).value;
 
     device.resetFences(fence);
@@ -293,6 +298,12 @@ void Vulkan::createDescriptorSetLayout() {
                     .descriptorType = vk::DescriptorType::eUniformBuffer,
                     .descriptorCount = 1,
                     .stageFlags = vk::ShaderStageFlagBits::eCompute
+            },
+            {
+                    .binding = 2,
+                    .descriptorType = vk::DescriptorType::eUniformBuffer,
+                    .descriptorCount = 1,
+                    .stageFlags = vk::ShaderStageFlagBits::eCompute
             }
     };
 
@@ -311,7 +322,7 @@ void Vulkan::createDescriptorPool() {
             },
             {
                     .type = vk::DescriptorType::eUniformBuffer,
-                    .descriptorCount = 1
+                    .descriptorCount = 2
             }
     };
 
@@ -343,6 +354,12 @@ void Vulkan::createDescriptorSet() {
             .range = sizeof(Scene)
     };
 
+    vk::DescriptorBufferInfo renderPassDataBufferInfo = {
+            .buffer = renderPassDataBuffer,
+            .offset = 0,
+            .range = sizeof(RenderPassData)
+    };
+
     std::vector<vk::WriteDescriptorSet> descriptorWrites = {
             {
                     .dstSet = descriptorSet,
@@ -359,6 +376,14 @@ void Vulkan::createDescriptorSet() {
                     .descriptorCount = 1,
                     .descriptorType = vk::DescriptorType::eUniformBuffer,
                     .pBufferInfo = &sceneBufferInfo
+            },
+            {
+                    .dstSet = descriptorSet,
+                    .dstBinding = 2,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = vk::DescriptorType::eUniformBuffer,
+                    .pBufferInfo = &renderPassDataBufferInfo
             }
     };
 
@@ -437,8 +462,8 @@ void Vulkan::createCommandBuffer() {
 
 
     vk::ImageMemoryBarrier imageBarrierToGeneral = getImagePipelineBarrier(
-            vk::AccessFlagBits::eNoneKHR, vk::AccessFlagBits::eShaderWrite, vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eGeneral);
+            vk::AccessFlagBits::eNoneKHR, vk::AccessFlagBits::eShaderWrite,
+            vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
     commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
                                   vk::DependencyFlagBits::eByRegion, 0, nullptr,
                                   0, nullptr, 1, &imageBarrierToGeneral);
@@ -449,8 +474,8 @@ void Vulkan::createCommandBuffer() {
             1);
 
     vk::ImageMemoryBarrier imageBarrierToPresent = getImagePipelineBarrier(
-            vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eMemoryRead, vk::ImageLayout::eGeneral,
-            vk::ImageLayout::ePresentSrcKHR);
+            vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eMemoryRead,
+            vk::ImageLayout::eGeneral, vk::ImageLayout::ePresentSrcKHR);
     commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eBottomOfPipe,
                                   vk::DependencyFlagBits::eByRegion, 0, nullptr,
                                   0, nullptr, 1, &imageBarrierToPresent);
@@ -608,4 +633,31 @@ void Vulkan::createSceneBuffer() {
     void* data = device.mapMemory(sceneBufferMemory, 0, sizeof(Scene));
     memcpy(data, &scene, sizeof(Scene));
     device.unmapMemory(sceneBufferMemory);
+}
+
+void Vulkan::createRenderPassDataBuffer() {
+    renderPassDataBuffer = device.createBuffer(
+            {
+                    .size = sizeof(RenderPassData),
+                    .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+                    .sharingMode = vk::SharingMode::eExclusive
+            });
+
+    vk::MemoryRequirements memoryRequirements = device.getBufferMemoryRequirements(renderPassDataBuffer);
+
+    renderPassDataBufferMemory = device.allocateMemory(
+            {
+                    .allocationSize = memoryRequirements.size,
+                    .memoryTypeIndex = findMemoryTypeIndex(memoryRequirements.memoryTypeBits,
+                                                           vk::MemoryPropertyFlagBits::eHostVisible |
+                                                           vk::MemoryPropertyFlagBits::eHostCoherent)
+            });
+
+    device.bindBufferMemory(renderPassDataBuffer, renderPassDataBufferMemory, 0);
+}
+
+void Vulkan::updateRenderPassDataBuffer(const RenderPassData &renderPassData) {
+    void* data = device.mapMemory(renderPassDataBufferMemory, 0, sizeof(RenderPassData));
+    memcpy(data, &renderPassData, sizeof(RenderPassData));
+    device.unmapMemory(renderPassDataBufferMemory);
 }

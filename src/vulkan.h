@@ -8,6 +8,7 @@
 #include <vkfw/vkfw.hpp>
 #include "vulkan_settings.h"
 #include "scene.h"
+#include "render_pass_data.h"
 
 class Vulkan {
 public:
@@ -17,7 +18,7 @@ public:
 
     void update();
 
-    void render();
+    void render(const RenderPassData &renderPassData);
 
     [[nodiscard]] bool shouldExit() const;
 
@@ -61,6 +62,9 @@ private:
 
     vk::Buffer sceneBuffer;
     vk::DeviceMemory sceneBufferMemory;
+
+    vk::Buffer renderPassDataBuffer;
+    vk::DeviceMemory renderPassDataBufferMemory;
 
     void createWindow();
 
@@ -106,5 +110,9 @@ private:
             const vk::ImageLayout &oldLayout, const vk::ImageLayout &newLayout) const;
 
     void createSceneBuffer();
+
+    void createRenderPassDataBuffer();
+
+    void updateRenderPassDataBuffer(const RenderPassData &renderPassData);
 
 };
