@@ -5,7 +5,7 @@ int main() {
             .windowWidth = 1200,
             .windowHeight = 675,
             .computeShaderFile = "shader.comp.spv",
-            .computeShaderGroupCount = 16
+            .computeShaderGroupSize = 16
     };
 
     Vulkan vulkan(settings);

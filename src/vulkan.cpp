@@ -423,8 +423,8 @@ void Vulkan::createCommandBuffer() {
                                   0, nullptr, 1, &imageBarrierToGeneral);
 
     commandBuffer.dispatch(
-            static_cast<uint32_t>(std::ceil(float(settings.windowWidth) / float(settings.computeShaderGroupCount))),
-            static_cast<uint32_t>(std::ceil(float(settings.windowHeight) / float(settings.computeShaderGroupCount))),
+            static_cast<uint32_t>(std::ceil(float(settings.windowWidth) / float(settings.computeShaderGroupSize))),
+            static_cast<uint32_t>(std::ceil(float(settings.windowHeight) / float(settings.computeShaderGroupSize))),
             1);
 
     commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eBottomOfPipe,
