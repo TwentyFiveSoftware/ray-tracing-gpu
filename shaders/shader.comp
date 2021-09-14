@@ -24,13 +24,21 @@ struct Sphere {
 };
 
 // VARIABLES
-Sphere sphere1 = Sphere(vec3(0.0f, 0.0f, 1.0f), 0.5f);
+const float renderDistance = 100000000.0f;
+
+const uint spheresSize = 2;
+
+Sphere spheres[spheresSize] = Sphere[spheresSize](
+Sphere(vec3(0.0f, 0.0f, 1.0f), 0.5f),
+Sphere(vec3(0.0f, -100.5f, 1.0f), 100.0f)
+);
 
 
 // METHODS
 vec3 calculateRayColor(const Ray ray);
 vec3 rayAt(const Ray ray, const float t);
-HitRecord hitSphere(const Ray ray, const Sphere sphere);
+HitRecord hitSphere(const Ray ray, const Sphere sphere, float tMin, float tMax);
+HitRecord hitAnySphere(const Ray ray, float tMin, float tMax);
 
 
 // MAIN
@@ -53,7 +61,7 @@ void main() {
 
 // RENDERING
 vec3 calculateRayColor(const Ray ray) {
-    HitRecord record = hitSphere(ray, sphere1);
+    HitRecord record = hitAnySphere(ray, 0.0f, renderDistance);
     if (record.doesHit) {
         return 0.5f * (record.normal + 1.0f);
     }
@@ -70,7 +78,7 @@ vec3 rayAt(const Ray ray, const float t) {
 
 
 // SPHERE
-HitRecord hitSphere(const Ray ray, const Sphere sphere) {
+HitRecord hitSphere(const Ray ray, const Sphere sphere, float tMin, float tMax) {
     const vec3 CO = ray.origin - sphere.center;
     const float a = dot(ray.direction, ray.direction);
     const float halfB = dot(CO, ray.direction);
@@ -82,12 +90,36 @@ HitRecord hitSphere(const Ray ray, const Sphere sphere) {
         return HitRecord(false, 0.0f, vec3(0.0f), vec3(0.0f), true);
     }
 
-    const float t = (-halfB - sqrt(D)) / a;
-    const vec3 point = rayAt(ray, t);
+    const float t1 = (-halfB - sqrt(D)) / a;
+    const float t2 = (-halfB + sqrt(D)) / a;
 
+    float t;
+
+    if (t1 >= tMin && t1 <= tMax) {
+        t = t1;
+    } else if (t2 >= tMin && t2 <= tMax) {
+        t = t2;
+    } else {
+        return HitRecord(false, 0.0f, vec3(0.0f), vec3(0.0f), true);
+    }
+
+    const vec3 point = rayAt(ray, t);
     const vec3 outwardNormal = normalize(point - sphere.center);
     const bool frontFace = dot(ray.direction, outwardNormal) < 0.0f;
     const vec3 normal = frontFace ? outwardNormal : -outwardNormal;
 
     return HitRecord(true, t, point, normal, frontFace);
+}
+
+HitRecord hitAnySphere(const Ray ray, float tMin, float tMax) {
+    HitRecord record = HitRecord(false, tMax, vec3(0.0f), vec3(0.0f), true);
+
+    for (uint i = 0; i < spheresSize; i++) {
+        HitRecord tempRecord = hitSphere(ray, spheres[i], tMin, record.t);
+        if (tempRecord.doesHit) {
+            record = tempRecord;
+        }
+    }
+
+    return record;
 }
