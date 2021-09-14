@@ -4,8 +4,31 @@ layout(binding = 0, rgba8_snorm) uniform writeonly image2D renderTarget;
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-void main() {
-    vec2 uv = gl_GlobalInvocationID.xy / vec2(imageSize(renderTarget));
 
-    imageStore(renderTarget, ivec2(gl_GlobalInvocationID.xy), vec4(uv.x, uv.y, 0.5f, 1.0f));
+struct Ray {
+    vec3 origin;
+    vec3 direction;
+};
+
+
+vec3 calculateRayColor(const Ray ray) {
+    const float t = (ray.direction.y + 1.0f) / 2.0f;
+    return (1.0f - t) * vec3(1.0f, 1.0f, 1.0f) + t * vec3(0.5f, 0.7f, 1.0f);
+}
+
+
+void main() {
+    const vec2 imageSize = vec2(imageSize(renderTarget));
+    const vec2 uv = gl_GlobalInvocationID.xy / imageSize;
+
+    const float viewportHeight = 2.0f;
+    const float viewportWidth = imageSize.x / imageSize.y * viewportHeight;
+
+    const vec3 origin = vec3(0.0f, 0.0f, 0.0f);
+    const vec3 upperLeftCornerDirection = vec3(-viewportWidth / 2.0f, viewportHeight / 2.0f, 1.0f);
+
+    Ray ray = Ray(origin, normalize(upperLeftCornerDirection + vec3(viewportWidth * uv.x, -viewportHeight * uv.y, 0.0f)));
+    const vec3 pixelColor = calculateRayColor(ray);
+
+    imageStore(renderTarget, ivec2(gl_GlobalInvocationID.xy), vec4(pixelColor, 1.0f));
 }
