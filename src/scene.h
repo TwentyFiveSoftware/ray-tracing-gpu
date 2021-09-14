@@ -22,8 +22,8 @@ struct Material {
 
 struct Scene {
     alignas(4) uint32_t sphereAmount;
-    Sphere spheres[16];
-    Material materials[16];
+    Sphere spheres[500];
+    Material materials[500];
 };
 
 

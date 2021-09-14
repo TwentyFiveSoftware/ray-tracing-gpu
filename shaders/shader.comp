@@ -55,8 +55,8 @@ layout(binding = 0, rgba8_snorm) uniform writeonly image2D renderTarget;
 
 layout(binding = 1) uniform Scene {
     uint sphereAmount;
-    Sphere spheres[16];
-    Material materials[16];
+    Sphere spheres[500];
+    Material materials[500];
 } scene;
 
 
@@ -67,26 +67,9 @@ const uint MATERIAL_TYPE_REFRACTIVE = 2;
 
 // CONSTANTS
 const float MAX_RAY_COLLISION_DISTANCE = 100000000.0f;
-const uint SAMPLES = 16384;
-const uint MAX_DEPTH = 256;
+const uint SAMPLES = 1000;
+const uint MAX_DEPTH = 50;
 const vec3 BACKGROUND_COLOR = vec3(0.70f, 0.80f, 1.00f);
-
-// VARIABLES
-//const Material materials[4] = Material[4](
-//Material(MATERIAL_TYPE_DIFFUSE, vec3(0.5f, 0.5f, 0.5f), 0.0f),
-//Material(MATERIAL_TYPE_DIFFUSE, vec3(0.4f, 0.2f, 0.1f), 0.0f),
-//Material(MATERIAL_TYPE_METAL, vec3(0.7f, 0.6f, 0.5f), 0.0f),
-//Material(MATERIAL_TYPE_REFRACTIVE, vec3(1.0f), 1.5f)
-//);
-//
-//const uint spheresSize = 4;
-//
-//const Sphere spheres[spheresSize] = Sphere[spheresSize](
-//Sphere(vec3(0.0f, -1000.0f, 1.0f), 1000.0f, 0),
-//Sphere(vec3(-4.0f, 1.0f, 0.0f), 1.0f, 1),
-//Sphere(vec3(4.0f, 1.0f, 0.0f), 1.0f, 2),
-//Sphere(vec3(0.0f, 1.0f, 0.0f), 1.0f, 3)
-//);
 
 const Camera camera = Camera(25.0f, 0.0f, 10.0f, vec3(13.0f, 2.0f, -3.0f), vec3(0.0f), vec3(0.0f, 1.0f, 0.0f));
 
