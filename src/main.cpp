@@ -1,7 +1,8 @@
-#include "vulkan.h"
 #include <chrono>
 #include <iostream>
 #include <thread>
+#include "vulkan.h"
+#include "scene.h"
 
 int main() {
     VulkanSettings settings = {
@@ -11,7 +12,9 @@ int main() {
             .computeShaderGroupSize = 16
     };
 
-    Vulkan vulkan(settings);
+    Scene scene = generateRandomScene();
+
+    Vulkan vulkan(settings, scene);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     std::cout << "Start rendering..." << std::endl;

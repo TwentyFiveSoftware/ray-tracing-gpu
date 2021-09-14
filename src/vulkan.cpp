@@ -11,13 +11,15 @@ const std::vector<const char*> requiredDeviceExtensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
-Vulkan::Vulkan(VulkanSettings settings) : settings(std::move(settings)) {
+Vulkan::Vulkan(VulkanSettings settings, Scene scene) :
+        settings(std::move(settings)), scene(std::move(scene)) {
     createWindow();
     createInstance();
     createSurface();
     pickPhysicalDevice();
     findQueueFamilies();
     createLogicalDevice();
+    createSceneBuffer();
     createCommandPool();
     createSwapChain();
     createDescriptorSetLayout();
@@ -31,6 +33,8 @@ Vulkan::Vulkan(VulkanSettings settings) : settings(std::move(settings)) {
 }
 
 Vulkan::~Vulkan() {
+    device.destroyBuffer(sceneBuffer);
+    device.freeMemory(sceneBufferMemory);
     device.destroySemaphore(semaphore);
     device.destroyFence(fence);
     device.destroyPipeline(pipeline);
@@ -283,6 +287,12 @@ void Vulkan::createDescriptorSetLayout() {
                     .descriptorType = vk::DescriptorType::eStorageImage,
                     .descriptorCount = 1,
                     .stageFlags = vk::ShaderStageFlagBits::eCompute
+            },
+            {
+                    .binding = 1,
+                    .descriptorType = vk::DescriptorType::eUniformBuffer,
+                    .descriptorCount = 1,
+                    .stageFlags = vk::ShaderStageFlagBits::eCompute
             }
     };
 
@@ -297,6 +307,10 @@ void Vulkan::createDescriptorPool() {
     std::vector<vk::DescriptorPoolSize> poolSizes = {
             {
                     .type = vk::DescriptorType::eStorageImage,
+                    .descriptorCount = 1
+            },
+            {
+                    .type = vk::DescriptorType::eUniformBuffer,
                     .descriptorCount = 1
             }
     };
@@ -323,6 +337,12 @@ void Vulkan::createDescriptorSet() {
             .imageLayout = vk::ImageLayout::eGeneral
     };
 
+    vk::DescriptorBufferInfo sceneBufferInfo = {
+            .buffer = sceneBuffer,
+            .offset = 0,
+            .range = sizeof(Scene)
+    };
+
     std::vector<vk::WriteDescriptorSet> descriptorWrites = {
             {
                     .dstSet = descriptorSet,
@@ -331,6 +351,14 @@ void Vulkan::createDescriptorSet() {
                     .descriptorCount = 1,
                     .descriptorType = vk::DescriptorType::eStorageImage,
                     .pImageInfo = &renderTargetImage
+            },
+            {
+                    .dstSet = descriptorSet,
+                    .dstBinding = 1,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = vk::DescriptorType::eUniformBuffer,
+                    .pBufferInfo = &sceneBufferInfo
             }
     };
 
@@ -454,7 +482,7 @@ void Vulkan::saveScreenshot(const std::string &name) {
     vk::Buffer screenshotBuffer = device.createBuffer(
             {
                     .size = settings.windowWidth * settings.windowHeight * 4,
-                    .usage  = vk::BufferUsageFlagBits::eTransferDst,
+                    .usage = vk::BufferUsageFlagBits::eTransferDst,
                     .sharingMode = vk::SharingMode::eExclusive
             });
 
@@ -555,4 +583,29 @@ vk::ImageMemoryBarrier Vulkan::getImagePipelineBarrier(
                     .layerCount = 1
             },
     };
+}
+
+void Vulkan::createSceneBuffer() {
+    sceneBuffer = device.createBuffer(
+            {
+                    .size = sizeof(Scene),
+                    .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+                    .sharingMode = vk::SharingMode::eExclusive
+            });
+
+    vk::MemoryRequirements memoryRequirements = device.getBufferMemoryRequirements(sceneBuffer);
+
+    sceneBufferMemory = device.allocateMemory(
+            {
+                    .allocationSize = memoryRequirements.size,
+                    .memoryTypeIndex = findMemoryTypeIndex(memoryRequirements.memoryTypeBits,
+                                                           vk::MemoryPropertyFlagBits::eHostVisible |
+                                                           vk::MemoryPropertyFlagBits::eHostCoherent)
+            });
+
+    device.bindBufferMemory(sceneBuffer, sceneBufferMemory, 0);
+
+    void* data = device.mapMemory(sceneBufferMemory, 0, sizeof(Scene));
+    memcpy(data, &scene, sizeof(Scene));
+    device.unmapMemory(sceneBufferMemory);
 }

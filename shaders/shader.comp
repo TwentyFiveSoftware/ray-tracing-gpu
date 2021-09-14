@@ -1,9 +1,5 @@
 #version 450
 
-layout(binding = 0, rgba8_snorm) uniform writeonly image2D renderTarget;
-
-layout(local_size_x = 16, local_size_y = 16) in;
-
 // STRUCTS
 struct Ray {
     vec3 origin;
@@ -54,6 +50,15 @@ struct Viewport {
     vec3 cameraRight;
 };
 
+// INPUTS
+layout(binding = 0, rgba8_snorm) uniform writeonly image2D renderTarget;
+
+layout(binding = 1) uniform Scene {
+    uint sphereAmount;
+    Sphere spheres[16];
+    Material materials[16];
+} scene;
+
 
 // ENUMS
 const uint MATERIAL_TYPE_DIFFUSE = 0;
@@ -67,24 +72,23 @@ const uint MAX_DEPTH = 256;
 const vec3 BACKGROUND_COLOR = vec3(0.70f, 0.80f, 1.00f);
 
 // VARIABLES
-const Material materials[4] = Material[4](
-Material(MATERIAL_TYPE_DIFFUSE, vec3(0.5f, 0.5f, 0.5f), 0.0f),
-Material(MATERIAL_TYPE_DIFFUSE, vec3(0.4f, 0.2f, 0.1f), 0.0f),
-Material(MATERIAL_TYPE_METAL, vec3(0.7f, 0.6f, 0.5f), 0.0f),
-Material(MATERIAL_TYPE_REFRACTIVE, vec3(1.0f), 1.5f)
-);
+//const Material materials[4] = Material[4](
+//Material(MATERIAL_TYPE_DIFFUSE, vec3(0.5f, 0.5f, 0.5f), 0.0f),
+//Material(MATERIAL_TYPE_DIFFUSE, vec3(0.4f, 0.2f, 0.1f), 0.0f),
+//Material(MATERIAL_TYPE_METAL, vec3(0.7f, 0.6f, 0.5f), 0.0f),
+//Material(MATERIAL_TYPE_REFRACTIVE, vec3(1.0f), 1.5f)
+//);
+//
+//const uint spheresSize = 4;
+//
+//const Sphere spheres[spheresSize] = Sphere[spheresSize](
+//Sphere(vec3(0.0f, -1000.0f, 1.0f), 1000.0f, 0),
+//Sphere(vec3(-4.0f, 1.0f, 0.0f), 1.0f, 1),
+//Sphere(vec3(4.0f, 1.0f, 0.0f), 1.0f, 2),
+//Sphere(vec3(0.0f, 1.0f, 0.0f), 1.0f, 3)
+//);
 
-const uint spheresSize = 4;
-
-const Sphere spheres[spheresSize] = Sphere[spheresSize](
-Sphere(vec3(0.0f, -1000.0f, 1.0f), 1000.0f, 0),
-Sphere(vec3(-4.0f, 1.0f, 0.0f), 1.0f, 1),
-Sphere(vec3(4.0f, 1.0f, 0.0f), 1.0f, 2),
-Sphere(vec3(0.0f, 1.0f, 0.0f), 1.0f, 3)
-);
-
-const Camera camera = Camera(25.0f, 0.1f, 10.0f, vec3(13.0f, 2.0f, -3.0f), vec3(0.0f), vec3(0.0f, 1.0f, 0.0f));
-//const Camera camera = Camera(60.0f, 0.0f, 10.0f, vec3(0.0f, 0.0f, -2.0f), vec3(0.0f, 0.0f, 1.0f), vec3(0.0f, 1.0f, 0.0f));
+const Camera camera = Camera(25.0f, 0.0f, 10.0f, vec3(13.0f, 2.0f, -3.0f), vec3(0.0f), vec3(0.0f, 1.0f, 0.0f));
 
 
 // METHODS
@@ -105,6 +109,8 @@ Ray getCameraRay(const Viewport viewport, const vec2 uv);
 
 
 // MAIN
+layout(local_size_x = 16, local_size_y = 16) in;
+
 void main() {
     const vec2 imageSize = vec2(imageSize(renderTarget));
     const float aspectRatio = imageSize.x / imageSize.y;
@@ -157,7 +163,7 @@ ScatterRecord scatterMaterialMetal(const Ray ray, const HitRecord record, const 
 ScatterRecord scatterMaterialRefractive(const Ray ray, const HitRecord record, const Material material);
 
 ScatterRecord scatter(const Ray ray, const HitRecord record) {
-    const Material material = materials[record.materialIndex];
+    const Material material = scene.materials[record.materialIndex];
 
     if (material.type == MATERIAL_TYPE_DIFFUSE) {
         return scatterMaterialDiffuse(ray, record, material);
@@ -187,7 +193,7 @@ ScatterRecord scatterMaterialDiffuse(const Ray ray, const HitRecord record, cons
         scatterDirection = record.normal;
     }
 
-    return ScatterRecord(true, material.attenuation, scatterDirection);
+    return ScatterRecord(true, material.attenuation.rgb, scatterDirection);
 }
 
 ScatterRecord scatterMaterialMetal(const Ray ray, const HitRecord record, const Material material) {
@@ -196,7 +202,7 @@ ScatterRecord scatterMaterialMetal(const Ray ray, const HitRecord record, const 
     const vec3 scatterDirection = normalize(reflectedDirection + fuzzDireciton);
 
     const bool doesScatter = dot(scatterDirection, record.normal) > 0.0f;
-    return ScatterRecord(doesScatter, material.attenuation, scatterDirection);
+    return ScatterRecord(doesScatter, material.attenuation.rgb, scatterDirection);
 }
 
 ScatterRecord scatterMaterialRefractive(const Ray ray, const HitRecord record, const Material material) {
@@ -211,13 +217,13 @@ ScatterRecord scatterMaterialRefractive(const Ray ray, const HitRecord record, c
         scatterDirection = reflect(ray.direction, record.normal);
     }
 
-    return ScatterRecord(true, material.attenuation, scatterDirection);
+    return ScatterRecord(true, material.attenuation.rgb, scatterDirection);
 }
 
 
 // SPHERE
 HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const float tMax) {
-    const vec3 CO = ray.origin - sphere.center;
+    const vec3 CO = ray.origin - sphere.center.xyz;
     const float a = dot(ray.direction, ray.direction);
     const float halfB = dot(CO, ray.direction);
     const float c = dot(CO, CO) - sphere.radius * sphere.radius;
@@ -242,7 +248,7 @@ HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const 
     }
 
     const vec3 point = rayAt(ray, t);
-    const vec3 outwardNormal = normalize(point - sphere.center);
+    const vec3 outwardNormal = normalize(point - sphere.center.xyz);
     const bool frontFace = dot(ray.direction, outwardNormal) < 0.0f;
     const vec3 normal = frontFace ? outwardNormal : -outwardNormal;
 
@@ -252,8 +258,8 @@ HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const 
 HitRecord hitAnySphere(const Ray ray, const float tMin, const float tMax) {
     HitRecord record = HitRecord(false, tMax, vec3(0.0f), vec3(0.0f), true, 0);
 
-    for (uint i = 0; i < spheresSize; i++) {
-        HitRecord tempRecord = hitSphere(ray, spheres[i], tMin, record.t);
+    for (uint i = 0; i < scene.sphereAmount; i++) {
+        HitRecord tempRecord = hitSphere(ray, scene.spheres[i], tMin, record.t);
         if (tempRecord.doesHit) {
             record = tempRecord;
         }

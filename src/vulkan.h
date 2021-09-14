@@ -7,10 +7,11 @@
 #include <vulkan/vulkan.hpp>
 #include <vkfw/vkfw.hpp>
 #include "vulkan_settings.h"
+#include "scene.h"
 
 class Vulkan {
 public:
-    Vulkan(VulkanSettings settings);
+    Vulkan(VulkanSettings settings, Scene scene);
 
     ~Vulkan();
 
@@ -25,6 +26,8 @@ public:
 
 private:
     VulkanSettings settings;
+    Scene scene;
+
     const vk::Format format = vk::Format::eR8G8B8A8Unorm;
     const vk::ColorSpaceKHR colorSpace = vk::ColorSpaceKHR::eSrgbNonlinear;
     const vk::PresentModeKHR presentMode = vk::PresentModeKHR::eImmediate;
@@ -35,7 +38,7 @@ private:
     vk::PhysicalDevice physicalDevice;
     vk::Device device;
 
-    uint32_t computeQueueFamily, presentQueueFamily;
+    uint32_t computeQueueFamily = 0, presentQueueFamily = 0;
     vk::Queue computeQueue, presentQueue;
 
     vk::CommandPool commandPool;
@@ -55,6 +58,9 @@ private:
 
     vk::Fence fence;
     vk::Semaphore semaphore;
+
+    vk::Buffer sceneBuffer;
+    vk::DeviceMemory sceneBufferMemory;
 
     void createWindow();
 
@@ -98,5 +104,7 @@ private:
     [[nodiscard]] vk::ImageMemoryBarrier getImagePipelineBarrier(
             const vk::AccessFlagBits &srcAccessFlags, const vk::AccessFlagBits &dstAccessFlags,
             const vk::ImageLayout &oldLayout, const vk::ImageLayout &newLayout) const;
+
+    void createSceneBuffer();
 
 };
