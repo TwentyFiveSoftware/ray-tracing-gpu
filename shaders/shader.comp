@@ -30,7 +30,7 @@ const uint MATERIAL_DIFFUSE = 0;
 // CONSTANTS
 const float RENDER_DISTANCE = 100000000.0f;
 const uint SAMPLES = 16384;
-const uint MAX_DEPTH = 1024;
+const uint MAX_DEPTH = 256;
 const vec3 BACKGROUND_COLOR = vec3(0.70f, 0.80f, 1.00f);
 
 // VARIABLES

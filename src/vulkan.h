@@ -95,4 +95,8 @@ private:
     [[nodiscard]] uint32_t findMemoryTypeIndex(const uint32_t &memoryTypeBits,
                                                const vk::MemoryPropertyFlags &properties);
 
+    [[nodiscard]] vk::ImageMemoryBarrier getImagePipelineBarrier(
+            const vk::AccessFlagBits &srcAccessFlags, const vk::AccessFlagBits &dstAccessFlags,
+            const vk::ImageLayout &oldLayout, const vk::ImageLayout &newLayout) const;
+
 };

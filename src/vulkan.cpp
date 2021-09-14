@@ -399,47 +399,18 @@ void Vulkan::createCommandBuffer() {
                     .commandBufferCount = 1
             }).front();
 
-    vk::ImageMemoryBarrier imageBarrierToGeneral = {
-            .srcAccessMask = vk::AccessFlagBits::eNoneKHR,
-            .dstAccessMask = vk::AccessFlagBits::eShaderWrite,
-            .oldLayout = vk::ImageLayout::eUndefined,
-            .newLayout = vk::ImageLayout::eGeneral,
-            .srcQueueFamilyIndex = computeQueueFamily,
-            .dstQueueFamilyIndex = computeQueueFamily,
-            .image = swapChainImage,
-            .subresourceRange = {
-                    .aspectMask = vk::ImageAspectFlagBits::eColor,
-                    .baseMipLevel = 0,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1
-            },
-    };
-
-    vk::ImageMemoryBarrier imageBarrierToPresent = {
-            .srcAccessMask = vk::AccessFlagBits::eShaderWrite,
-            .dstAccessMask = vk::AccessFlagBits::eMemoryRead,
-            .oldLayout = vk::ImageLayout::eGeneral,
-            .newLayout = vk::ImageLayout::ePresentSrcKHR,
-            .srcQueueFamilyIndex = computeQueueFamily,
-            .dstQueueFamilyIndex = computeQueueFamily,
-            .image = swapChainImage,
-            .subresourceRange = {
-                    .aspectMask = vk::ImageAspectFlagBits::eColor,
-                    .baseMipLevel = 0,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1
-            },
-    };
-
     vk::CommandBufferBeginInfo beginInfo = {};
-    std::vector<vk::DescriptorSet> descriptorSets = {descriptorSet};
-
     commandBuffer.begin(&beginInfo);
+
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
+
+    std::vector<vk::DescriptorSet> descriptorSets = {descriptorSet};
     commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout, 0, descriptorSets, nullptr);
 
+
+    vk::ImageMemoryBarrier imageBarrierToGeneral = getImagePipelineBarrier(
+            vk::AccessFlagBits::eNoneKHR, vk::AccessFlagBits::eShaderWrite, vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eGeneral);
     commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
                                   vk::DependencyFlagBits::eByRegion, 0, nullptr,
                                   0, nullptr, 1, &imageBarrierToGeneral);
@@ -449,6 +420,9 @@ void Vulkan::createCommandBuffer() {
             static_cast<uint32_t>(std::ceil(float(settings.windowHeight) / float(settings.computeShaderGroupSize))),
             1);
 
+    vk::ImageMemoryBarrier imageBarrierToPresent = getImagePipelineBarrier(
+            vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eMemoryRead, vk::ImageLayout::eGeneral,
+            vk::ImageLayout::ePresentSrcKHR);
     commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eBottomOfPipe,
                                   vk::DependencyFlagBits::eByRegion, 0, nullptr,
                                   0, nullptr, 1, &imageBarrierToPresent);
@@ -504,23 +478,6 @@ void Vulkan::saveScreenshot(const std::string &name) {
             }).front();
 
 
-    vk::ImageMemoryBarrier imageBarrierToTransferSrc = {
-            .srcAccessMask = vk::AccessFlagBits::eMemoryRead,
-            .dstAccessMask = vk::AccessFlagBits::eMemoryRead,
-            .oldLayout = vk::ImageLayout::ePresentSrcKHR,
-            .newLayout = vk::ImageLayout::eTransferSrcOptimal,
-            .srcQueueFamilyIndex = computeQueueFamily,
-            .dstQueueFamilyIndex = computeQueueFamily,
-            .image = swapChainImage,
-            .subresourceRange = {
-                    .aspectMask = vk::ImageAspectFlagBits::eColor,
-                    .baseMipLevel = 0,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1
-            },
-    };
-
     std::vector<vk::BufferImageCopy> screenshotImageCopy = {
             {
                     .bufferOffset = 0,
@@ -541,6 +498,9 @@ void Vulkan::saveScreenshot(const std::string &name) {
             }
     };
 
+    vk::ImageMemoryBarrier imageBarrierToTransferSrc = getImagePipelineBarrier(
+            vk::AccessFlagBits::eMemoryRead, vk::AccessFlagBits::eMemoryRead, vk::ImageLayout::ePresentSrcKHR,
+            vk::ImageLayout::eTransferSrcOptimal);
 
     vk::CommandBufferBeginInfo beginInfo = {.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
     screenshotCommandBuffer.begin(&beginInfo);
@@ -573,4 +533,26 @@ void Vulkan::saveScreenshot(const std::string &name) {
 
     device.destroyBuffer(screenshotBuffer);
     device.freeMemory(screenshotBufferMemory);
+}
+
+vk::ImageMemoryBarrier Vulkan::getImagePipelineBarrier(
+        const vk::AccessFlagBits &srcAccessFlags, const vk::AccessFlagBits &dstAccessFlags,
+        const vk::ImageLayout &oldLayout, const vk::ImageLayout &newLayout) const {
+
+    return {
+            .srcAccessMask = srcAccessFlags,
+            .dstAccessMask = dstAccessFlags,
+            .oldLayout = oldLayout,
+            .newLayout = newLayout,
+            .srcQueueFamilyIndex = computeQueueFamily,
+            .dstQueueFamilyIndex = computeQueueFamily,
+            .image = swapChainImage,
+            .subresourceRange = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+            },
+    };
 }
