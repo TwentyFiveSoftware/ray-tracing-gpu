@@ -4,7 +4,7 @@ layout(binding = 0, rgba8_snorm) uniform writeonly image2D renderTarget;
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-
+// STRUCTS
 struct Ray {
     vec3 origin;
     vec3 direction;
@@ -15,40 +15,17 @@ struct Sphere {
     float radius;
 };
 
-
+// VARIABLES
 Sphere sphere1 = Sphere(vec3(0.0f, 0.0f, 1.0f), 0.5f);
 
-vec3 rayAt(const Ray ray, const float t) {
-    return ray.origin + t * ray.direction;
-}
 
-float hitSphere(const Ray ray, const Sphere sphere) {
-    const vec3 CO = ray.origin - sphere.center;
-    const float a = dot(ray.direction, ray.direction);
-    const float halfB = dot(CO, ray.direction);
-    const float c = dot(CO, CO) - sphere.radius * sphere.radius;
-
-    const float D = halfB * halfB - a * c;
-
-    if (D < 0) {
-        return -1.0f;
-    }
-
-    return (-halfB - sqrt(D)) / a;
-}
-
-vec3 calculateRayColor(const Ray ray) {
-    float t = hitSphere(ray, sphere1);
-    if (t > 0.0f) {
-        const vec3 normal = normalize(rayAt(ray, t) - sphere1.center);
-        return 0.5f * (normal + 1.0f);
-    }
-
-    t = (ray.direction.y + 1.0f) / 2.0f;
-    return (1.0f - t) * vec3(1.0f, 1.0f, 1.0f) + t * vec3(0.5f, 0.7f, 1.0f);
-}
+// METHODS
+vec3 calculateRayColor(const Ray ray);
+vec3 rayAt(const Ray ray, const float t);
+float hitSphere(const Ray ray, const Sphere sphere);
 
 
+// MAIN
 void main() {
     const vec2 imageSize = vec2(imageSize(renderTarget));
     const vec2 uv = gl_GlobalInvocationID.xy / imageSize;
@@ -63,4 +40,40 @@ void main() {
     const vec3 pixelColor = calculateRayColor(ray);
 
     imageStore(renderTarget, ivec2(gl_GlobalInvocationID.xy), vec4(pixelColor, 1.0f));
+}
+
+
+// RENDERING
+vec3 calculateRayColor(const Ray ray) {
+    float t = hitSphere(ray, sphere1);
+    if (t > 0.0f) {
+        const vec3 normal = normalize(rayAt(ray, t) - sphere1.center);
+        return 0.5f * (normal + 1.0f);
+    }
+
+    t = (ray.direction.y + 1.0f) / 2.0f;
+    return (1.0f - t) * vec3(1.0f, 1.0f, 1.0f) + t * vec3(0.5f, 0.7f, 1.0f);
+}
+
+
+// RAY
+vec3 rayAt(const Ray ray, const float t) {
+    return ray.origin + t * ray.direction;
+}
+
+
+// SPHERE
+float hitSphere(const Ray ray, const Sphere sphere) {
+    const vec3 CO = ray.origin - sphere.center;
+    const float a = dot(ray.direction, ray.direction);
+    const float halfB = dot(CO, ray.direction);
+    const float c = dot(CO, CO) - sphere.radius * sphere.radius;
+
+    const float D = halfB * halfB - a * c;
+
+    if (D < 0) {
+        return -1.0f;
+    }
+
+    return (-halfB - sqrt(D)) / a;
 }
