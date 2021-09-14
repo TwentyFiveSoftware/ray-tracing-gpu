@@ -33,8 +33,8 @@ private:
     vk::PhysicalDevice physicalDevice;
     vk::Device device;
 
-    uint32_t queueFamily;
-    vk::Queue queue;
+    uint32_t computeQueueFamily, presentQueueFamily;
+    vk::Queue computeQueue, presentQueue;
 
     vk::CommandPool commandPool;
 
@@ -62,7 +62,7 @@ private:
 
     void pickPhysicalDevice();
 
-    void findQueueFamily();
+    void findQueueFamilies();
 
     void createLogicalDevice();
 

@@ -13,7 +13,7 @@ Vulkan::Vulkan(VulkanSettings settings) : settings(std::move(settings)) {
     createInstance();
     createSurface();
     pickPhysicalDevice();
-    findQueueFamily();
+    findQueueFamilies();
     createLogicalDevice();
     createCommandPool();
     createSwapChain();
@@ -51,15 +51,17 @@ void Vulkan::update() {
 void Vulkan::render() {
     uint32_t swapChainImageIndex = device.acquireNextImageKHR(swapChain, UINT64_MAX, semaphore).value;
 
+    device.resetFences(fence);
+
     vk::SubmitInfo submitInfo = {
             .commandBufferCount = 1,
             .pCommandBuffers = &commandBuffer
     };
 
-    device.resetFences(fence);
-    queue.submit(1, &submitInfo, fence);
+    computeQueue.submit(1, &submitInfo, fence);
 
     device.waitForFences(1, &fence, true, UINT64_MAX);
+    device.resetFences(fence);
 
     vk::PresentInfoKHR presentInfo = {
             .waitSemaphoreCount = 1,
@@ -69,8 +71,7 @@ void Vulkan::render() {
             .pImageIndices = &swapChainImageIndex
     };
 
-    device.resetFences(fence);
-    queue.presentKHR(presentInfo);
+    presentQueue.presentKHR(presentInfo);
 }
 
 bool Vulkan::shouldExit() const {
@@ -126,7 +127,7 @@ void Vulkan::createInstance() {
             .pUserData = nullptr
     };
 
-    vk::InstanceCreateInfo instanceCreateInfo{
+    vk::InstanceCreateInfo instanceCreateInfo = {
             .pNext = &debugMessengerInfo,
             .pApplicationInfo = &applicationInfo,
             .enabledLayerCount = static_cast<uint32_t>(enabledLayers.size()),
@@ -166,8 +167,11 @@ void Vulkan::pickPhysicalDevice() {
     throw std::runtime_error("No GPU supporting all required features found!");
 }
 
-void Vulkan::findQueueFamily() {
+void Vulkan::findQueueFamilies() {
     std::vector<vk::QueueFamilyProperties> queueFamilies = physicalDevice.getQueueFamilyProperties();
+
+    bool computeFamilyFound = false;
+    bool presentFamilyFound = false;
 
     for (uint32_t i = 0; i < queueFamilies.size(); i++) {
         bool supportsGraphics = (queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics)
@@ -176,10 +180,19 @@ void Vulkan::findQueueFamily() {
                                == vk::QueueFlagBits::eCompute;
         bool supportsPresenting = physicalDevice.getSurfaceSupportKHR(static_cast<uint32_t>(i), surface);
 
-        if (supportsGraphics && supportsPresenting && supportsCompute) {
-            queueFamily = i;
-            break;
+        if (supportsCompute && !supportsGraphics && !computeFamilyFound) {
+            computeQueueFamily = i;
+            computeFamilyFound = true;
+            continue;
         }
+
+        if (supportsPresenting && !presentFamilyFound) {
+            presentQueueFamily = i;
+            presentFamilyFound = true;
+        }
+
+        if (computeFamilyFound && presentFamilyFound)
+            break;
     }
 }
 
@@ -187,7 +200,12 @@ void Vulkan::createLogicalDevice() {
     float queuePriority = 1.0f;
     std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos = {
             {
-                    .queueFamilyIndex = queueFamily,
+                    .queueFamilyIndex = computeQueueFamily,
+                    .queueCount = 1,
+                    .pQueuePriorities = &queuePriority
+            },
+            {
+                    .queueFamilyIndex = presentQueueFamily,
                     .queueCount = 1,
                     .pQueuePriorities = &queuePriority
             }
@@ -205,12 +223,12 @@ void Vulkan::createLogicalDevice() {
 
     device = physicalDevice.createDevice(deviceCreateInfo);
 
-    // get queues
-    queue = device.getQueue(queueFamily, 0);
+    computeQueue = device.getQueue(computeQueueFamily, 0);
+    presentQueue = device.getQueue(presentQueueFamily, 0);
 }
 
 void Vulkan::createCommandPool() {
-    commandPool = device.createCommandPool({.queueFamilyIndex = queueFamily});
+    commandPool = device.createCommandPool({.queueFamilyIndex = computeQueueFamily});
 }
 
 void Vulkan::createSwapChain() {
@@ -382,8 +400,8 @@ void Vulkan::createCommandBuffer() {
             .dstAccessMask = vk::AccessFlagBits::eShaderWrite,
             .oldLayout = vk::ImageLayout::eUndefined,
             .newLayout = vk::ImageLayout::eGeneral,
-            .srcQueueFamilyIndex = queueFamily,
-            .dstQueueFamilyIndex = queueFamily,
+            .srcQueueFamilyIndex = computeQueueFamily,
+            .dstQueueFamilyIndex = computeQueueFamily,
             .image = swapChainImage,
             .subresourceRange = {
                     .aspectMask = vk::ImageAspectFlagBits::eColor,
@@ -399,8 +417,8 @@ void Vulkan::createCommandBuffer() {
             .dstAccessMask = vk::AccessFlagBits::eMemoryRead,
             .oldLayout = vk::ImageLayout::eGeneral,
             .newLayout = vk::ImageLayout::ePresentSrcKHR,
-            .srcQueueFamilyIndex = queueFamily,
-            .dstQueueFamilyIndex = queueFamily,
+            .srcQueueFamilyIndex = computeQueueFamily,
+            .dstQueueFamilyIndex = computeQueueFamily,
             .image = swapChainImage,
             .subresourceRange = {
                     .aspectMask = vk::ImageAspectFlagBits::eColor,
