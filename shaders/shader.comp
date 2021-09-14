@@ -22,7 +22,7 @@ struct HitRecord {
 struct ScatterRecord {
     bool doesScatter;
     vec3 attenuation;
-    Ray scatteredRay;
+    vec3 scatterDirection;
 };
 
 struct Sphere {
@@ -33,7 +33,7 @@ struct Sphere {
 
 struct Material {
     uint type;
-    vec3 albedo;
+    vec3 attenuation;
     float specificAttribute;// metal: "fuzz"
 };
 
@@ -41,6 +41,7 @@ struct Material {
 // ENUMS
 const uint MATERIAL_TYPE_DIFFUSE = 0;
 const uint MATERIAL_TYPE_METAL = 1;
+const uint MATERIAL_TYPE_REFRACTIVE = 2;
 
 // CONSTANTS
 const float MAX_RAY_COLLISION_DISTANCE = 100000000.0f;
@@ -49,23 +50,25 @@ const uint MAX_DEPTH = 256;
 const vec3 BACKGROUND_COLOR = vec3(0.70f, 0.80f, 1.00f);
 
 // VARIABLES
-const Material materials[3] = Material[3](
-Material(MATERIAL_TYPE_DIFFUSE, vec3(0.8f, 0.8f, 0.0f), 0.0f), // GROUND
-Material(MATERIAL_TYPE_DIFFUSE, vec3(0.7f, 0.3f, 0.3f), 0.0f), // DIFFUSE
-Material(MATERIAL_TYPE_METAL, vec3(0.8f, 0.8f, 0.8f), 0.5f)// METAL
+const Material materials[4] = Material[4](
+Material(MATERIAL_TYPE_DIFFUSE, vec3(0.8f, 0.8f, 0.0f), 0.0f),
+Material(MATERIAL_TYPE_DIFFUSE, vec3(0.7f, 0.3f, 0.3f), 0.0f),
+Material(MATERIAL_TYPE_METAL, vec3(0.8f, 0.8f, 0.8f), 0.5f),
+Material(MATERIAL_TYPE_REFRACTIVE, vec3(1.0f), 1.5f)
 );
 
-const uint spheresSize = 3;
+const uint spheresSize = 4;
 
 const Sphere spheres[spheresSize] = Sphere[spheresSize](
 Sphere(vec3(0.0f, -100.5f, 1.0f), 100.0f, 0),
 Sphere(vec3(0.0f, 0.0f, 1.0f), 0.5f, 1),
-Sphere(vec3(1.5f, 0.25f, 1.5f), 0.5f, 2)
+Sphere(vec3(1.5f, 0.25f, 1.5f), 0.5f, 2),
+Sphere(vec3(-1.5f, 0.0f, 1.0f), 0.5f, 3)
 );
 
 
 // METHODS
-vec3 calculateRayColor(const Ray ray, const uint currentSample);
+vec3 calculateRayColor(in Ray ray, const uint currentSample);
 ScatterRecord scatter(const Ray ray, const HitRecord record);
 vec3 rayAt(const Ray ray, const float t);
 HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const float tMax);
@@ -75,6 +78,8 @@ float randomInInterval(const float min, const float max);
 vec3 randomVector(const float min, const float max);
 vec3 randomUnitVector();
 bool isVectorNearZero(const vec3 vector);
+bool canRefract(const vec3 vector, const vec3 normal, const float eta);
+float reflectanceFactor(const vec3 vector, const vec3 normal, const float eta);
 
 
 // MAIN
@@ -103,13 +108,12 @@ void main() {
 
 
 // RENDERING
-vec3 calculateRayColor(const Ray ray, const uint currentSample) {
-    Ray currentRay = ray;
+vec3 calculateRayColor(in Ray ray, const uint currentSample) {
     vec3 reflectedColor = vec3(1.0f);
     vec3 lightSourceColor = vec3(0.0f);// black, if ray exceeds bounce limit
 
     for (uint depth = 0; depth < MAX_DEPTH; depth++) {
-        HitRecord record = hitAnySphere(currentRay, 0.001f, MAX_RAY_COLLISION_DISTANCE);
+        HitRecord record = hitAnySphere(ray, 0.001f, MAX_RAY_COLLISION_DISTANCE);
 
         if (!record.doesHit) {
             lightSourceColor = BACKGROUND_COLOR;
@@ -119,7 +123,7 @@ vec3 calculateRayColor(const Ray ray, const uint currentSample) {
         ScatterRecord scatterRecord = scatter(ray, record);
         if (scatterRecord.doesScatter) {
             reflectedColor *= scatterRecord.attenuation;
-            currentRay = scatterRecord.scatteredRay;
+            ray = Ray(record.point, normalize(scatterRecord.scatterDirection));
         } else {
             lightSourceColor = vec3(0.0f);
             break;
@@ -129,35 +133,66 @@ vec3 calculateRayColor(const Ray ray, const uint currentSample) {
     return reflectedColor * lightSourceColor;
 }
 
+ScatterRecord scatterMaterialDiffuse(const Ray ray, const HitRecord record, const Material material);
+ScatterRecord scatterMaterialMetal(const Ray ray, const HitRecord record, const Material material);
+ScatterRecord scatterMaterialRefractive(const Ray ray, const HitRecord record, const Material material);
+
 ScatterRecord scatter(const Ray ray, const HitRecord record) {
     const Material material = materials[record.materialIndex];
 
     if (material.type == MATERIAL_TYPE_DIFFUSE) {
-        vec3 scatterDirection = record.normal + randomUnitVector();
-
-        if (isVectorNearZero(scatterDirection)) {
-            scatterDirection = record.normal;
-        }
-
-        const Ray scatteredRay = Ray(record.point, scatterDirection);
-        return ScatterRecord(true, material.albedo, scatteredRay);
+        return scatterMaterialDiffuse(ray, record, material);
 
     } else if (material.type == MATERIAL_TYPE_METAL) {
-        const vec3 reflectedDirection = reflect(ray.direction, record.normal);
-        const vec3 scatterDirection = normalize(reflectedDirection + material.specificAttribute * randomUnitVector());
-        const Ray scatteredRay = Ray(record.point, scatterDirection);
-        const bool doesScatter = dot(scatteredRay.direction, record.normal) > 0.0f;
-        return ScatterRecord(doesScatter, material.albedo, scatteredRay);
+        return scatterMaterialMetal(ray, record, material);
+
+    } else if (material.type == MATERIAL_TYPE_REFRACTIVE) {
+        return scatterMaterialRefractive(ray, record, material);
 
     }
 
-    return ScatterRecord(false, vec3(0.0f), Ray(vec3(0.0f), vec3(0.0f)));
+    return ScatterRecord(false, vec3(0.0f), vec3(0.0f));
 }
 
 
 // RAY
 vec3 rayAt(const Ray ray, const float t) {
     return ray.origin + t * ray.direction;
+}
+
+// SCATTER
+ScatterRecord scatterMaterialDiffuse(const Ray ray, const HitRecord record, const Material material) {
+    vec3 scatterDirection = record.normal + randomUnitVector();
+
+    if (isVectorNearZero(scatterDirection)) {
+        scatterDirection = record.normal;
+    }
+
+    return ScatterRecord(true, material.attenuation, scatterDirection);
+}
+
+ScatterRecord scatterMaterialMetal(const Ray ray, const HitRecord record, const Material material) {
+    const vec3 reflectedDirection = reflect(ray.direction, record.normal);
+    const vec3 fuzzDireciton = material.specificAttribute * randomUnitVector();
+    const vec3 scatterDirection = normalize(reflectedDirection + fuzzDireciton);
+
+    const bool doesScatter = dot(scatterDirection, record.normal) > 0.0f;
+    return ScatterRecord(doesScatter, material.attenuation, scatterDirection);
+}
+
+ScatterRecord scatterMaterialRefractive(const Ray ray, const HitRecord record, const Material material) {
+    const float eta = record.frontFace ? (1.0f / material.specificAttribute) : material.specificAttribute;
+    const bool doesRefract = canRefract(ray.direction, record.normal, eta) && reflectanceFactor(ray.direction, record.normal, eta) < random();
+
+    vec3 scatterDirection;
+
+    if (doesRefract) {
+        scatterDirection = refract(ray.direction, record.normal, eta);
+    } else {
+        scatterDirection = reflect(ray.direction, record.normal);
+    }
+
+    return ScatterRecord(true, material.attenuation, scatterDirection);
 }
 
 
@@ -248,4 +283,14 @@ vec3 randomUnitVector() {
 bool isVectorNearZero(const vec3 vector) {
     const float s = 1e-8;
     return abs(vector.x) < s && abs(vector.y) < s && abs(vector.z) < s;
+}
+
+bool canRefract(const vec3 vector, const vec3 normal, const float eta) {
+    const float cosTheta = dot(-vector, normal);
+    return eta * sqrt(1.0f - cosTheta * cosTheta) <= 1.0f;
+}
+
+float reflectanceFactor(const vec3 vector, const vec3 normal, const float eta) {
+    float r = pow((1.0f - eta) / (1.0f + eta), 2.0f);
+    return r + (1.0f - r) * pow(1.0f - dot(-vector, normal), 5.0f);
 }
