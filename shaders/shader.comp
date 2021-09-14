@@ -49,7 +49,7 @@ HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const 
 HitRecord hitAnySphere(const Ray ray, const float tMin, const float tMax);
 float random();
 float randomInInterval(const float min, const float max);
-vec3 randomVector();
+vec3 randomVector(const float min, const float max);
 vec3 randomUnitVector();
 
 
@@ -152,7 +152,7 @@ HitRecord hitAnySphere(const Ray ray, const float tMin, const float tMax) {
 }
 
 
-// UTILS
+// RANDOM
 uint hash(uint x) {
     x += (x << 10u);
     x ^= (x >>  6u);
@@ -178,10 +178,10 @@ float randomInInterval(const float min, const float max) {
     return random() * (max - min) + min;
 }
 
-vec3 randomVector() {
-    return vec3(randomInInterval(-1.0f, 1.0f), randomInInterval(-1.0f, 1.0f), randomInInterval(-1.0f, 1.0f));
+vec3 randomVector(const float min, const float max) {
+    return vec3(randomInInterval(min, max), randomInInterval(min, max), randomInInterval(min, max));
 }
 
 vec3 randomUnitVector() {
-    return normalize(randomVector());
+    return normalize(randomVector(-1.0f, 1.0f));
 }
