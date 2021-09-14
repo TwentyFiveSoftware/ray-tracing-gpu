@@ -21,6 +21,7 @@ Vulkan::Vulkan(VulkanSettings settings, Scene scene) :
     createLogicalDevice();
     createSceneBuffer();
     createRenderPassDataBuffer();
+    createSummedPixelColorImage();
     createCommandPool();
     createSwapChain();
     createDescriptorSetLayout();
@@ -34,10 +35,16 @@ Vulkan::Vulkan(VulkanSettings settings, Scene scene) :
 }
 
 Vulkan::~Vulkan() {
+    device.destroyImageView(summedPixelColorImageView);
+    device.destroyImage(summedPixelColorImage);
+    device.freeMemory(summedPixelColorImageMemory);
+
     device.destroyBuffer(renderPassDataBuffer);
     device.freeMemory(renderPassDataBufferMemory);
+
     device.destroyBuffer(sceneBuffer);
     device.freeMemory(sceneBufferMemory);
+
     device.destroySemaphore(semaphore);
     device.destroyFence(fence);
     device.destroyPipeline(pipeline);
@@ -247,7 +254,7 @@ void Vulkan::createSwapChain() {
     vk::SwapchainCreateInfoKHR swapChainCreateInfo = {
             .surface = surface,
             .minImageCount = 1,
-            .imageFormat = format,
+            .imageFormat = swapChainImageFormat,
             .imageColorSpace = colorSpace,
             .imageExtent = {.width = settings.windowWidth, .height = settings.windowHeight},
             .imageArrayLayers = 1,
@@ -266,10 +273,10 @@ void Vulkan::createSwapChain() {
     // swap chain images
     std::vector<vk::Image> swapChainImages = device.getSwapchainImagesKHR(swapChain);
     swapChainImage = swapChainImages.front();
-    swapChainImageView = createImageView(swapChainImage);
+    swapChainImageView = createImageView(swapChainImage, swapChainImageFormat);
 }
 
-vk::ImageView Vulkan::createImageView(const vk::Image &image) const {
+vk::ImageView Vulkan::createImageView(const vk::Image &image, const vk::Format &format) const {
     return device.createImageView(
             {
                     .image = image,
@@ -295,12 +302,18 @@ void Vulkan::createDescriptorSetLayout() {
             },
             {
                     .binding = 1,
-                    .descriptorType = vk::DescriptorType::eUniformBuffer,
+                    .descriptorType = vk::DescriptorType::eStorageImage,
                     .descriptorCount = 1,
                     .stageFlags = vk::ShaderStageFlagBits::eCompute
             },
             {
                     .binding = 2,
+                    .descriptorType = vk::DescriptorType::eUniformBuffer,
+                    .descriptorCount = 1,
+                    .stageFlags = vk::ShaderStageFlagBits::eCompute
+            },
+            {
+                    .binding = 3,
                     .descriptorType = vk::DescriptorType::eUniformBuffer,
                     .descriptorCount = 1,
                     .stageFlags = vk::ShaderStageFlagBits::eCompute
@@ -318,7 +331,7 @@ void Vulkan::createDescriptorPool() {
     std::vector<vk::DescriptorPoolSize> poolSizes = {
             {
                     .type = vk::DescriptorType::eStorageImage,
-                    .descriptorCount = 1
+                    .descriptorCount = 2
             },
             {
                     .type = vk::DescriptorType::eUniformBuffer,
@@ -343,8 +356,13 @@ void Vulkan::createDescriptorSet() {
             }).front();
 
 
-    vk::DescriptorImageInfo renderTargetImage = {
+    vk::DescriptorImageInfo renderTargetImageInfo = {
             .imageView = swapChainImageView,
+            .imageLayout = vk::ImageLayout::eGeneral
+    };
+
+    vk::DescriptorImageInfo summedPixelColorImageInfo = {
+            .imageView = summedPixelColorImageView,
             .imageLayout = vk::ImageLayout::eGeneral
     };
 
@@ -367,11 +385,19 @@ void Vulkan::createDescriptorSet() {
                     .dstArrayElement = 0,
                     .descriptorCount = 1,
                     .descriptorType = vk::DescriptorType::eStorageImage,
-                    .pImageInfo = &renderTargetImage
+                    .pImageInfo = &renderTargetImageInfo
             },
             {
                     .dstSet = descriptorSet,
                     .dstBinding = 1,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = vk::DescriptorType::eStorageImage,
+                    .pImageInfo = &summedPixelColorImageInfo
+            },
+            {
+                    .dstSet = descriptorSet,
+                    .dstBinding = 2,
                     .dstArrayElement = 0,
                     .descriptorCount = 1,
                     .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -379,7 +405,7 @@ void Vulkan::createDescriptorSet() {
             },
             {
                     .dstSet = descriptorSet,
-                    .dstBinding = 2,
+                    .dstBinding = 3,
                     .dstArrayElement = 0,
                     .descriptorCount = 1,
                     .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -461,12 +487,18 @@ void Vulkan::createCommandBuffer() {
     commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout, 0, descriptorSets, nullptr);
 
 
-    vk::ImageMemoryBarrier imageBarrierToGeneral = getImagePipelineBarrier(
-            vk::AccessFlagBits::eNoneKHR, vk::AccessFlagBits::eShaderWrite,
-            vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+    vk::ImageMemoryBarrier imageBarriersToGeneral[2] = {
+            getImagePipelineBarrier(
+                    vk::AccessFlagBits::eNoneKHR, vk::AccessFlagBits::eShaderWrite,
+                    vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, swapChainImage),
+            getImagePipelineBarrier(
+                    vk::AccessFlagBits::eNoneKHR, vk::AccessFlagBits::eShaderWrite,
+                    vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, summedPixelColorImage)
+    };
+
     commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
                                   vk::DependencyFlagBits::eByRegion, 0, nullptr,
-                                  0, nullptr, 1, &imageBarrierToGeneral);
+                                  0, nullptr, 2, imageBarriersToGeneral);
 
     commandBuffer.dispatch(
             static_cast<uint32_t>(std::ceil(float(settings.windowWidth) / float(settings.computeShaderGroupSize))),
@@ -475,7 +507,7 @@ void Vulkan::createCommandBuffer() {
 
     vk::ImageMemoryBarrier imageBarrierToPresent = getImagePipelineBarrier(
             vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eMemoryRead,
-            vk::ImageLayout::eGeneral, vk::ImageLayout::ePresentSrcKHR);
+            vk::ImageLayout::eGeneral, vk::ImageLayout::ePresentSrcKHR, swapChainImage);
     commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eBottomOfPipe,
                                   vk::DependencyFlagBits::eByRegion, 0, nullptr,
                                   0, nullptr, 1, &imageBarrierToPresent);
@@ -553,7 +585,7 @@ void Vulkan::saveScreenshot(const std::string &name) {
 
     vk::ImageMemoryBarrier imageBarrierToTransferSrc = getImagePipelineBarrier(
             vk::AccessFlagBits::eMemoryRead, vk::AccessFlagBits::eMemoryRead, vk::ImageLayout::ePresentSrcKHR,
-            vk::ImageLayout::eTransferSrcOptimal);
+            vk::ImageLayout::eTransferSrcOptimal, swapChainImage);
 
     vk::CommandBufferBeginInfo beginInfo = {.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
     screenshotCommandBuffer.begin(&beginInfo);
@@ -590,7 +622,8 @@ void Vulkan::saveScreenshot(const std::string &name) {
 
 vk::ImageMemoryBarrier Vulkan::getImagePipelineBarrier(
         const vk::AccessFlagBits &srcAccessFlags, const vk::AccessFlagBits &dstAccessFlags,
-        const vk::ImageLayout &oldLayout, const vk::ImageLayout &newLayout) const {
+        const vk::ImageLayout &oldLayout, const vk::ImageLayout &newLayout,
+        const vk::Image &image) const {
 
     return {
             .srcAccessMask = srcAccessFlags,
@@ -599,7 +632,7 @@ vk::ImageMemoryBarrier Vulkan::getImagePipelineBarrier(
             .newLayout = newLayout,
             .srcQueueFamilyIndex = computeQueueFamily,
             .dstQueueFamilyIndex = computeQueueFamily,
-            .image = swapChainImage,
+            .image = image,
             .subresourceRange = {
                     .aspectMask = vk::ImageAspectFlagBits::eColor,
                     .baseMipLevel = 0,
@@ -660,4 +693,38 @@ void Vulkan::updateRenderPassDataBuffer(const RenderPassData &renderPassData) {
     void* data = device.mapMemory(renderPassDataBufferMemory, 0, sizeof(RenderPassData));
     memcpy(data, &renderPassData, sizeof(RenderPassData));
     device.unmapMemory(renderPassDataBufferMemory);
+}
+
+void Vulkan::createSummedPixelColorImage() {
+    vk::ImageCreateInfo imageCreateInfo = {
+            .imageType = vk::ImageType::e2D,
+            .format = summedPixelColorImageFormat,
+            .extent = {
+                    .width = settings.windowWidth,
+                    .height = settings.windowHeight,
+                    .depth = 1
+            },
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = vk::SampleCountFlagBits::e1,
+            .tiling = vk::ImageTiling::eOptimal,
+            .usage = vk::ImageUsageFlagBits::eStorage,
+            .sharingMode = vk::SharingMode::eExclusive,
+            .initialLayout = vk::ImageLayout::eUndefined
+    };
+
+    summedPixelColorImage = device.createImage(imageCreateInfo);
+
+    vk::MemoryRequirements memoryRequirements = device.getImageMemoryRequirements(summedPixelColorImage);
+
+    summedPixelColorImageMemory = device.allocateMemory(
+            {
+                    .allocationSize = memoryRequirements.size,
+                    .memoryTypeIndex = findMemoryTypeIndex(memoryRequirements.memoryTypeBits,
+                                                           vk::MemoryPropertyFlagBits::eDeviceLocal)
+            });
+
+    device.bindImageMemory(summedPixelColorImage, summedPixelColorImageMemory, 0);
+
+    summedPixelColorImageView = createImageView(summedPixelColorImage, summedPixelColorImageFormat);
 }

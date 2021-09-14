@@ -53,14 +53,17 @@ struct Viewport {
 // INPUTS
 layout(binding = 0, rgba8_snorm) uniform image2D renderTarget;
 
-layout(binding = 1) uniform Scene {
+layout(binding = 1, rgba16_snorm) uniform image2D summedPixelColorImage;
+
+layout(binding = 2) uniform Scene {
     uint sphereAmount;
     Sphere spheres[500];
     Material materials[500];
 } scene;
 
-layout(binding = 2) uniform RenderPassData {
+layout(binding = 3) uniform RenderPassData {
     uint number;
+    uint renderPasses;
     uint samples;
 } renderPassData;
 
@@ -104,22 +107,22 @@ void main() {
     const float aspectRatio = imageSize.x / imageSize.y;
 
     const Viewport viewport = calculateViewport(aspectRatio);
+    const uint samplesPerPass = renderPassData.samples / renderPassData.renderPasses;
 
-    vec3 summedPixelColor = vec3(0.0f);
-    for (uint i = 0; i < renderPassData.samples; i++) {
+    vec3 summedPixelColor = imageLoad(summedPixelColorImage, ivec2(gl_GlobalInvocationID.xy)).rgb;
+
+    for (uint i = 0; i < samplesPerPass; i++) {
         const float u = (gl_GlobalInvocationID.x + random()) / imageSize.x;
         const float v = (gl_GlobalInvocationID.y + random()) / imageSize.y;
         Ray ray = getCameraRay(viewport, vec2(u, v));
 
-        summedPixelColor += calculateRayColor(ray);
+        summedPixelColor += calculateRayColor(ray) / float(renderPassData.samples);
     }
 
-    const vec3 pixelColor = sqrt(summedPixelColor / float(renderPassData.samples));
+    imageStore(summedPixelColorImage, ivec2(gl_GlobalInvocationID.xy), vec4(summedPixelColor, 1.0f));
 
-    const vec3 currentColor = imageLoad(renderTarget, ivec2(gl_GlobalInvocationID.xy)).rgb;
-    const vec3 newPixelColor = renderPassData.number == 1 ? pixelColor : 0.5f * currentColor + 0.5f * pixelColor;
-
-    imageStore(renderTarget, ivec2(gl_GlobalInvocationID.xy), vec4(newPixelColor, 1.0f));
+    const vec3 pixelColor = sqrt(summedPixelColor * renderPassData.samples / float(renderPassData.number * samplesPerPass));
+    imageStore(renderTarget, ivec2(gl_GlobalInvocationID.xy), vec4(pixelColor, 1.0f));
 }
 
 

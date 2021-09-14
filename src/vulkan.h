@@ -29,7 +29,8 @@ private:
     VulkanSettings settings;
     Scene scene;
 
-    const vk::Format format = vk::Format::eR8G8B8A8Unorm;
+    const vk::Format swapChainImageFormat = vk::Format::eR8G8B8A8Unorm;
+    const vk::Format summedPixelColorImageFormat = vk::Format::eR16G16B16A16Unorm;
     const vk::ColorSpaceKHR colorSpace = vk::ColorSpaceKHR::eSrgbNonlinear;
     const vk::PresentModeKHR presentMode = vk::PresentModeKHR::eImmediate;
 
@@ -66,6 +67,10 @@ private:
     vk::Buffer renderPassDataBuffer;
     vk::DeviceMemory renderPassDataBufferMemory;
 
+    vk::Image summedPixelColorImage;
+    vk::ImageView summedPixelColorImageView;
+    vk::DeviceMemory summedPixelColorImageMemory;
+
     void createWindow();
 
     void createInstance();
@@ -82,7 +87,7 @@ private:
 
     void createSwapChain();
 
-    [[nodiscard]] vk::ImageView createImageView(const vk::Image &image) const;
+    [[nodiscard]] vk::ImageView createImageView(const vk::Image &image, const vk::Format &format) const;
 
     void createDescriptorSetLayout();
 
@@ -107,12 +112,14 @@ private:
 
     [[nodiscard]] vk::ImageMemoryBarrier getImagePipelineBarrier(
             const vk::AccessFlagBits &srcAccessFlags, const vk::AccessFlagBits &dstAccessFlags,
-            const vk::ImageLayout &oldLayout, const vk::ImageLayout &newLayout) const;
+            const vk::ImageLayout &oldLayout, const vk::ImageLayout &newLayout, const vk::Image &image) const;
 
     void createSceneBuffer();
 
     void createRenderPassDataBuffer();
 
     void updateRenderPassDataBuffer(const RenderPassData &renderPassData);
+
+    void createSummedPixelColorImage();
 
 };

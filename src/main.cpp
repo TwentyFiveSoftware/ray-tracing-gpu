@@ -3,7 +3,7 @@
 #include <thread>
 #include "vulkan.h"
 
-const uint32_t renderPasses = 20;
+const uint32_t renderPasses = 100;
 const uint32_t samples = 5000;
 
 int main() {
@@ -25,7 +25,8 @@ int main() {
     for (uint32_t pass = 1; pass <= renderPasses; pass++) {
         RenderPassData renderPassData = {
                 .number = pass,
-                .samples = samples / renderPasses
+                .renderPasses = renderPasses,
+                .samples = samples
         };
 
         std::cout << "Render pass " << pass << " / " << renderPasses << std::endl;
