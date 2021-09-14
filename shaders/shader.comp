@@ -21,27 +21,36 @@ struct HitRecord {
 struct Sphere {
     vec3 center;
     float radius;
+    uint material;
 };
+
+// ENUMS
+const uint MATERIAL_DIFFUSE = 0;
 
 // CONSTANTS
 const float RENDER_DISTANCE = 100000000.0f;
-const uint SAMPLES = 1024;
+const uint SAMPLES = 16384;
+const uint MAX_DEPTH = 1024;
+const vec3 BACKGROUND_COLOR = vec3(0.70f, 0.80f, 1.00f);
 
 // VARIABLES
 const uint spheresSize = 2;
 
 Sphere spheres[spheresSize] = Sphere[spheresSize](
-Sphere(vec3(0.0f, 0.0f, 1.0f), 0.5f),
-Sphere(vec3(0.0f, -100.5f, 1.0f), 100.0f)
+Sphere(vec3(0.0f, 0.0f, 1.0f), 0.5f, MATERIAL_DIFFUSE),
+Sphere(vec3(0.0f, -100.5f, 1.0f), 100.0f, MATERIAL_DIFFUSE)
 );
 
 
 // METHODS
-vec3 calculateRayColor(const Ray ray);
+vec3 calculateRayColor(const Ray ray, const uint currentSample);
 vec3 rayAt(const Ray ray, const float t);
-HitRecord hitSphere(const Ray ray, const Sphere sphere, float tMin, float tMax);
-HitRecord hitAnySphere(const Ray ray, float tMin, float tMax);
-float random(vec2 uv);
+HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const float tMax);
+HitRecord hitAnySphere(const Ray ray, const float tMin, const float tMax);
+float random();
+float randomInInterval(const float min, const float max);
+vec3 randomVector();
+vec3 randomUnitVector();
 
 
 // MAIN
@@ -56,28 +65,36 @@ void main() {
 
     vec3 summedPixelColor = vec3(0.0f);
     for (uint i = 0; i < SAMPLES; i++) {
-        const float u = (gl_GlobalInvocationID.x + random(vec2(gl_GlobalInvocationID.x, i))) / imageSize.x;
-        const float v = (gl_GlobalInvocationID.y + random(vec2(gl_GlobalInvocationID.y, i))) / imageSize.y;
+        const float u = (gl_GlobalInvocationID.x + random()) / imageSize.x;
+        const float v = (gl_GlobalInvocationID.y + random()) / imageSize.y;
 
         Ray ray = Ray(origin, normalize(upperLeftCornerDirection + vec3(viewportWidth * u, -viewportHeight * v, 0.0f)));
-        summedPixelColor += calculateRayColor(ray);
+        summedPixelColor += calculateRayColor(ray, i);
     }
 
-    const vec3 pixelColor = summedPixelColor / float(SAMPLES);
+    const vec3 pixelColor = sqrt(summedPixelColor / float(SAMPLES));
 
     imageStore(renderTarget, ivec2(gl_GlobalInvocationID.xy), vec4(pixelColor, 1.0f));
 }
 
 
 // RENDERING
-vec3 calculateRayColor(const Ray ray) {
-    HitRecord record = hitAnySphere(ray, 0.0f, RENDER_DISTANCE);
-    if (record.doesHit) {
-        return 0.5f * (record.normal + 1.0f);
+vec3 calculateRayColor(const Ray ray, const uint currentSample) {
+    Ray currentRay = ray;
+    vec3 currentColor = BACKGROUND_COLOR;
+
+    for (uint depth = 0; depth < MAX_DEPTH; depth++) {
+        HitRecord record = hitAnySphere(currentRay, 0.001f, RENDER_DISTANCE);
+
+        if (!record.doesHit) {
+            break;
+        }
+
+        currentColor = 0.5f * currentColor;
+        currentRay = Ray(record.point, record.normal + randomUnitVector());
     }
 
-    const float t = (ray.direction.y + 1.0f) / 2.0f;
-    return (1.0f - t) * vec3(1.0f, 1.0f, 1.0f) + t * vec3(0.5f, 0.7f, 1.0f);
+    return currentColor;
 }
 
 
@@ -88,7 +105,7 @@ vec3 rayAt(const Ray ray, const float t) {
 
 
 // SPHERE
-HitRecord hitSphere(const Ray ray, const Sphere sphere, float tMin, float tMax) {
+HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const float tMax) {
     const vec3 CO = ray.origin - sphere.center;
     const float a = dot(ray.direction, ray.direction);
     const float halfB = dot(CO, ray.direction);
@@ -121,7 +138,7 @@ HitRecord hitSphere(const Ray ray, const Sphere sphere, float tMin, float tMax) 
     return HitRecord(true, t, point, normal, frontFace);
 }
 
-HitRecord hitAnySphere(const Ray ray, float tMin, float tMax) {
+HitRecord hitAnySphere(const Ray ray, const float tMin, const float tMax) {
     HitRecord record = HitRecord(false, tMax, vec3(0.0f), vec3(0.0f), true);
 
     for (uint i = 0; i < spheresSize; i++) {
@@ -136,6 +153,35 @@ HitRecord hitAnySphere(const Ray ray, float tMin, float tMax) {
 
 
 // UTILS
-float random(vec2 uv) {
-    return fract(sin(dot(uv.xy, vec2(12.9898f, 78.233f))) * 43758.5453123f);
+uint hash(uint x) {
+    x += (x << 10u);
+    x ^= (x >>  6u);
+    x += (x <<  3u);
+    x ^= (x >> 11u);
+    x += (x << 15u);
+    return x;
+}
+
+uint currentRandomOffset = 0;
+
+float random() {
+    currentRandomOffset += 1;
+    const uvec3 v = floatBitsToUint(vec3(gl_GlobalInvocationID.xy, currentRandomOffset));
+
+    uint m = hash(v.x ^ hash(v.y) ^ hash(v.z));
+    m &= 0x007FFFFFu;
+    m |= 0x3F800000u;
+    return uintBitsToFloat(m) - 1.0f;
+}
+
+float randomInInterval(const float min, const float max) {
+    return random() * (max - min) + min;
+}
+
+vec3 randomVector() {
+    return vec3(randomInInterval(-1.0f, 1.0f), randomInInterval(-1.0f, 1.0f), randomInInterval(-1.0f, 1.0f));
+}
+
+vec3 randomUnitVector() {
+    return normalize(randomVector());
 }

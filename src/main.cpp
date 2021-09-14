@@ -1,6 +1,7 @@
 #include "vulkan.h"
 #include <chrono>
 #include <iostream>
+#include <thread>
 
 int main() {
     VulkanSettings settings = {
@@ -11,6 +12,9 @@ int main() {
     };
 
     Vulkan vulkan(settings);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "Start rendering..." << std::endl;
 
     auto renderBeginTime = std::chrono::steady_clock::now();
 
