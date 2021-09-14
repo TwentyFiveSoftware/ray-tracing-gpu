@@ -34,7 +34,24 @@ struct Sphere {
 struct Material {
     uint type;
     vec3 attenuation;
-    float specificAttribute;// metal: "fuzz"
+    float specificAttribute;// metal: "fuzz", refractive: "refraction index"
+};
+
+struct Camera {
+    float fov;
+    float aperture;
+    float focusDistance;
+    vec3 lookFrom;
+    vec3 lookAt;
+    vec3 up;
+};
+
+struct Viewport {
+    vec3 horizontal;
+    vec3 vertical;
+    vec3 upperLeftCorner;
+    vec3 cameraUp;
+    vec3 cameraRight;
 };
 
 
@@ -66,6 +83,8 @@ Sphere(vec3(1.5f, 0.25f, 1.5f), 0.5f, 2),
 Sphere(vec3(-1.5f, 0.0f, 1.0f), 0.5f, 3)
 );
 
+const Camera camera = Camera(25.0f, 0.1f, 10.0f, vec3(12.0f, 2.0f, -3.0f), vec3(0.0f), vec3(0.0f, 1.0f, 0.0f));
+
 
 // METHODS
 vec3 calculateRayColor(in Ray ray, const uint currentSample);
@@ -80,24 +99,23 @@ vec3 randomUnitVector();
 bool isVectorNearZero(const vec3 vector);
 bool canRefract(const vec3 vector, const vec3 normal, const float eta);
 float reflectanceFactor(const vec3 vector, const vec3 normal, const float eta);
+Viewport calculateViewport(const float aspectRatio);
+Ray getCameraRay(const Viewport viewport, const vec2 uv);
 
 
 // MAIN
 void main() {
     const vec2 imageSize = vec2(imageSize(renderTarget));
+    const float aspectRatio = imageSize.x / imageSize.y;
 
-    const float viewportHeight = 2.0f;
-    const float viewportWidth = imageSize.x / imageSize.y * viewportHeight;
-
-    const vec3 origin = vec3(0.0f, 0.0f, 0.0f);
-    const vec3 upperLeftCornerDirection = vec3(-viewportWidth / 2.0f, viewportHeight / 2.0f, 1.0f);
+    const Viewport viewport = calculateViewport(aspectRatio);
 
     vec3 summedPixelColor = vec3(0.0f);
     for (uint i = 0; i < SAMPLES; i++) {
         const float u = (gl_GlobalInvocationID.x + random()) / imageSize.x;
         const float v = (gl_GlobalInvocationID.y + random()) / imageSize.y;
+        Ray ray = getCameraRay(viewport, vec2(u, v));
 
-        Ray ray = Ray(origin, normalize(upperLeftCornerDirection + vec3(viewportWidth * u, -viewportHeight * v, 0.0f)));
         summedPixelColor += calculateRayColor(ray, i);
     }
 
@@ -293,4 +311,30 @@ bool canRefract(const vec3 vector, const vec3 normal, const float eta) {
 float reflectanceFactor(const vec3 vector, const vec3 normal, const float eta) {
     float r = pow((1.0f - eta) / (1.0f + eta), 2.0f);
     return r + (1.0f - r) * pow(1.0f - dot(-vector, normal), 5.0f);
+}
+
+// VIEWPORT
+Viewport calculateViewport(const float aspectRatio) {
+    const float viewportHeight = tan(radians(camera.fov) / 2.0f) * 2.0f;
+    const float viewportWidth = aspectRatio * viewportHeight;
+
+    const vec3 cameraForward = normalize(camera.lookAt - camera.lookFrom);
+    const vec3 cameraRight = normalize(cross(camera.up, cameraForward));
+    const vec3 cameraUp = normalize(cross(cameraForward, cameraRight));
+
+    const vec3 horizontal = viewportWidth * cameraRight * camera.focusDistance;
+    const vec3 vertical = viewportHeight * cameraUp * camera.focusDistance;
+    const vec3 upperLeftCorner = camera.lookFrom - horizontal / 2.0f + vertical / 2.0f + cameraForward * camera.focusDistance;
+
+    return Viewport(horizontal, vertical, upperLeftCorner, cameraUp, cameraRight);
+}
+
+Ray getCameraRay(const Viewport viewport, const vec2 uv) {
+    const vec3 random = (camera.aperture / 2.0f) * randomUnitVector();
+    const vec3 offset = viewport.cameraUp * random.x + viewport.cameraRight * random.y;
+
+    const vec3 from = camera.lookFrom + offset;
+    const vec3 to = viewport.upperLeftCorner + viewport.horizontal * uv.x - viewport.vertical * uv.y;
+
+    return Ray(from, to - from);
 }
