@@ -26,7 +26,7 @@ int main() {
     std::cout << "Rendered in " << (float(renderTime) / 1000.0f) << " ms" << std::endl;
 
     std::cout << "Saving screenshot..." << std::endl;
-    vulkan.saveScreenshot("render.png");
+//    vulkan.saveScreenshot("render.png");
     std::cout << "Screenshot saved" << std::endl;
 
     while (!vulkan.shouldExit()) {

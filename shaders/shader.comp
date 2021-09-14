@@ -16,34 +16,56 @@ struct HitRecord {
     vec3 point;
     vec3 normal;
     bool frontFace;
+    uint materialIndex;
+};
+
+struct ScatterRecord {
+    bool doesScatter;
+    vec3 attenuation;
+    Ray scatteredRay;
 };
 
 struct Sphere {
     vec3 center;
     float radius;
-    uint material;
+    uint materialIndex;
 };
 
+struct Material {
+    uint type;
+    vec3 albedo;
+};
+
+
 // ENUMS
-const uint MATERIAL_DIFFUSE = 0;
+const uint MATERIAL_TYPE_DIFFUSE = 0;
+const uint MATERIAL_TYPE_METAL = 1;
 
 // CONSTANTS
-const float RENDER_DISTANCE = 100000000.0f;
+const float MAX_RAY_COLLISION_DISTANCE = 100000000.0f;
 const uint SAMPLES = 16384;
 const uint MAX_DEPTH = 256;
 const vec3 BACKGROUND_COLOR = vec3(0.70f, 0.80f, 1.00f);
 
 // VARIABLES
-const uint spheresSize = 2;
+const Material materials[3] = Material[3](
+Material(MATERIAL_TYPE_DIFFUSE, vec3(0.8f, 0.8f, 0.0f)), // GROUND
+Material(MATERIAL_TYPE_DIFFUSE, vec3(0.7f, 0.3f, 0.3f)), // DIFFUSE
+Material(MATERIAL_TYPE_METAL, vec3(0.8f, 0.8f, 0.8f))// METAL
+);
 
-Sphere spheres[spheresSize] = Sphere[spheresSize](
-Sphere(vec3(0.0f, 0.0f, 1.0f), 0.5f, MATERIAL_DIFFUSE),
-Sphere(vec3(0.0f, -100.5f, 1.0f), 100.0f, MATERIAL_DIFFUSE)
+const uint spheresSize = 3;
+
+const Sphere spheres[spheresSize] = Sphere[spheresSize](
+Sphere(vec3(0.0f, -100.5f, 1.0f), 100.0f, 0),
+Sphere(vec3(0.0f, 0.0f, 1.0f), 0.5f, 1),
+Sphere(vec3(1.5f, 0.25f, 1.5f), 0.5f, 2)
 );
 
 
 // METHODS
 vec3 calculateRayColor(const Ray ray, const uint currentSample);
+ScatterRecord scatter(const Ray ray, const HitRecord record);
 vec3 rayAt(const Ray ray, const float t);
 HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const float tMax);
 HitRecord hitAnySphere(const Ray ray, const float tMin, const float tMax);
@@ -51,6 +73,7 @@ float random();
 float randomInInterval(const float min, const float max);
 vec3 randomVector(const float min, const float max);
 vec3 randomUnitVector();
+bool isVectorNearZero(const vec3 vector);
 
 
 // MAIN
@@ -81,20 +104,50 @@ void main() {
 // RENDERING
 vec3 calculateRayColor(const Ray ray, const uint currentSample) {
     Ray currentRay = ray;
-    vec3 currentColor = BACKGROUND_COLOR;
+    vec3 reflectedColor = vec3(1.0f);
+    vec3 lightSourceColor = vec3(0.0f);// black, if ray exceeds bounce limit
 
     for (uint depth = 0; depth < MAX_DEPTH; depth++) {
-        HitRecord record = hitAnySphere(currentRay, 0.001f, RENDER_DISTANCE);
+        HitRecord record = hitAnySphere(currentRay, 0.001f, MAX_RAY_COLLISION_DISTANCE);
 
         if (!record.doesHit) {
+            lightSourceColor = BACKGROUND_COLOR;
             break;
         }
 
-        currentColor = 0.5f * currentColor;
-        currentRay = Ray(record.point, record.normal + randomUnitVector());
+        ScatterRecord scatterRecord = scatter(ray, record);
+        if (scatterRecord.doesScatter) {
+            reflectedColor *= scatterRecord.attenuation;
+            currentRay = scatterRecord.scatteredRay;
+        } else {
+            lightSourceColor = vec3(0.0f);
+            break;
+        }
     }
 
-    return currentColor;
+    return reflectedColor * lightSourceColor;
+}
+
+ScatterRecord scatter(const Ray ray, const HitRecord record) {
+    Material material = materials[record.materialIndex];
+
+    if (material.type == MATERIAL_TYPE_DIFFUSE) {
+        vec3 scatterDirection = record.normal + randomUnitVector();
+
+        if (isVectorNearZero(scatterDirection)) {
+            scatterDirection = record.normal;
+        }
+
+        Ray scatteredRay = Ray(record.point, scatterDirection);
+        return ScatterRecord(true, material.albedo, scatteredRay);
+
+    } else if (material.type == MATERIAL_TYPE_METAL) {
+        Ray scatteredRay = Ray(record.point, normalize(reflect(ray.direction, record.normal)));
+        bool doesScatter = dot(scatteredRay.direction, record.normal) > 0.0f;
+        return ScatterRecord(doesScatter, material.albedo, scatteredRay);
+    }
+
+    return ScatterRecord(false, vec3(0.0f), Ray(vec3(0.0f), vec3(0.0f)));
 }
 
 
@@ -114,7 +167,7 @@ HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const 
     const float D = halfB * halfB - a * c;
 
     if (D < 0) {
-        return HitRecord(false, 0.0f, vec3(0.0f), vec3(0.0f), true);
+        return HitRecord(false, 0.0f, vec3(0.0f), vec3(0.0f), true, 0);
     }
 
     const float t1 = (-halfB - sqrt(D)) / a;
@@ -127,7 +180,7 @@ HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const 
     } else if (t2 >= tMin && t2 <= tMax) {
         t = t2;
     } else {
-        return HitRecord(false, 0.0f, vec3(0.0f), vec3(0.0f), true);
+        return HitRecord(false, 0.0f, vec3(0.0f), vec3(0.0f), true, 0);
     }
 
     const vec3 point = rayAt(ray, t);
@@ -135,11 +188,11 @@ HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const 
     const bool frontFace = dot(ray.direction, outwardNormal) < 0.0f;
     const vec3 normal = frontFace ? outwardNormal : -outwardNormal;
 
-    return HitRecord(true, t, point, normal, frontFace);
+    return HitRecord(true, t, point, normal, frontFace, sphere.materialIndex);
 }
 
 HitRecord hitAnySphere(const Ray ray, const float tMin, const float tMax) {
-    HitRecord record = HitRecord(false, tMax, vec3(0.0f), vec3(0.0f), true);
+    HitRecord record = HitRecord(false, tMax, vec3(0.0f), vec3(0.0f), true, 0);
 
     for (uint i = 0; i < spheresSize; i++) {
         HitRecord tempRecord = hitSphere(ray, spheres[i], tMin, record.t);
@@ -184,4 +237,11 @@ vec3 randomVector(const float min, const float max) {
 
 vec3 randomUnitVector() {
     return normalize(randomVector(-1.0f, 1.0f));
+}
+
+
+// UTILITY
+bool isVectorNearZero(const vec3 vector) {
+    const float s = 1e-8;
+    return abs(vector.x) < s && abs(vector.y) < s && abs(vector.z) < s;
 }
