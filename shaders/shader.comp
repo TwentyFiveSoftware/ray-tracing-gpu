@@ -23,9 +23,11 @@ struct Sphere {
     float radius;
 };
 
-// VARIABLES
-const float renderDistance = 100000000.0f;
+// CONSTANTS
+const float RENDER_DISTANCE = 100000000.0f;
+const uint SAMPLES = 1024;
 
+// VARIABLES
 const uint spheresSize = 2;
 
 Sphere spheres[spheresSize] = Sphere[spheresSize](
@@ -39,12 +41,12 @@ vec3 calculateRayColor(const Ray ray);
 vec3 rayAt(const Ray ray, const float t);
 HitRecord hitSphere(const Ray ray, const Sphere sphere, float tMin, float tMax);
 HitRecord hitAnySphere(const Ray ray, float tMin, float tMax);
+float random(vec2 uv);
 
 
 // MAIN
 void main() {
     const vec2 imageSize = vec2(imageSize(renderTarget));
-    const vec2 uv = gl_GlobalInvocationID.xy / imageSize;
 
     const float viewportHeight = 2.0f;
     const float viewportWidth = imageSize.x / imageSize.y * viewportHeight;
@@ -52,8 +54,16 @@ void main() {
     const vec3 origin = vec3(0.0f, 0.0f, 0.0f);
     const vec3 upperLeftCornerDirection = vec3(-viewportWidth / 2.0f, viewportHeight / 2.0f, 1.0f);
 
-    Ray ray = Ray(origin, normalize(upperLeftCornerDirection + vec3(viewportWidth * uv.x, -viewportHeight * uv.y, 0.0f)));
-    const vec3 pixelColor = calculateRayColor(ray);
+    vec3 summedPixelColor = vec3(0.0f);
+    for (uint i = 0; i < SAMPLES; i++) {
+        const float u = (gl_GlobalInvocationID.x + random(vec2(gl_GlobalInvocationID.x, i))) / imageSize.x;
+        const float v = (gl_GlobalInvocationID.y + random(vec2(gl_GlobalInvocationID.y, i))) / imageSize.y;
+
+        Ray ray = Ray(origin, normalize(upperLeftCornerDirection + vec3(viewportWidth * u, -viewportHeight * v, 0.0f)));
+        summedPixelColor += calculateRayColor(ray);
+    }
+
+    const vec3 pixelColor = summedPixelColor / float(SAMPLES);
 
     imageStore(renderTarget, ivec2(gl_GlobalInvocationID.xy), vec4(pixelColor, 1.0f));
 }
@@ -61,7 +71,7 @@ void main() {
 
 // RENDERING
 vec3 calculateRayColor(const Ray ray) {
-    HitRecord record = hitAnySphere(ray, 0.0f, renderDistance);
+    HitRecord record = hitAnySphere(ray, 0.0f, RENDER_DISTANCE);
     if (record.doesHit) {
         return 0.5f * (record.normal + 1.0f);
     }
@@ -122,4 +132,10 @@ HitRecord hitAnySphere(const Ray ray, float tMin, float tMax) {
     }
 
     return record;
+}
+
+
+// UTILS
+float random(vec2 uv) {
+    return fract(sin(dot(uv.xy, vec2(12.9898f, 78.233f))) * 43758.5453123f);
 }
