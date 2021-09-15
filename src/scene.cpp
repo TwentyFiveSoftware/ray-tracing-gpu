@@ -19,10 +19,11 @@ Scene generateRandomScene() {
             .materials = {},
     };
 
-    scene.materials[0] = {MaterialType::DIFFUSE, glm::vec3(0.5f, 0.5f, 0.5f), 0.0f};
-    scene.materials[1] = {MaterialType::DIFFUSE, glm::vec3(0.4f, 0.2f, 0.1f), 0.0f};
-    scene.materials[2] = {MaterialType::METAL, glm::vec3(0.7f, 0.6f, 0.5f), 0.0f};
-    scene.materials[3] = {MaterialType::REFRACTIVE, glm::vec3(1.0f, 1.0f, 1.0f), 1.5f};
+    scene.materials[0] = {MaterialType::DIFFUSE, TextureType::CHECKERED,
+                          {glm::vec3(0.05f, 0.05f, 0.05f), glm::vec3(0.95f, 0.95f, 0.95f)}, 0.0f};
+    scene.materials[1] = {MaterialType::DIFFUSE, TextureType::SOLID, {glm::vec3(0.4f, 0.2f, 0.1f)}, 0.0f};
+    scene.materials[2] = {MaterialType::METAL, TextureType::SOLID, {glm::vec3(0.7f, 0.6f, 0.5f)}, 0.0f};
+    scene.materials[3] = {MaterialType::REFRACTIVE, TextureType::SOLID, {glm::vec3(1.0f, 1.0f, 1.0f)}, 1.5f};
 
     scene.spheres[0] = {glm::vec3(0.0f, -1000.0f, 1.0f), 1000.0f, 0};
     scene.spheres[1] = {glm::vec3(-4.0f, 1.0f, 0.0f), 1.0f, 1};
@@ -43,7 +44,8 @@ Scene generateRandomScene() {
                                                    randomFloat() * randomFloat());
                 material = {
                         .type = MaterialType::DIFFUSE,
-                        .attenuation = albedo,
+                        .textureType = TextureType::SOLID,
+                        .colors = {albedo},
                         .specificAttribute = 0.0f
                 };
 
@@ -54,14 +56,16 @@ Scene generateRandomScene() {
 
                 material = {
                         .type = MaterialType::METAL,
-                        .attenuation = albedo,
+                        .textureType = TextureType::SOLID,
+                        .colors = {albedo},
                         .specificAttribute = fuzz
                 };
 
             } else {
                 material = {
                         .type = MaterialType::REFRACTIVE,
-                        .attenuation = glm::vec3(1.0f, 1.0f, 1.0f),
+                        .textureType = TextureType::SOLID,
+                        .colors = {glm::vec3(1.0f, 1.0f, 1.0f)},
                         .specificAttribute = 1.5f
                 };
 

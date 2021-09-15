@@ -13,6 +13,7 @@ struct HitRecord {
     vec3 normal;
     bool frontFace;
     uint materialIndex;
+    vec2 uv;
 };
 
 struct ScatterRecord {
@@ -29,7 +30,8 @@ struct Sphere {
 
 struct Material {
     uint type;
-    vec3 attenuation;
+    uint textureType;
+    vec3[2] colors;
     float specificAttribute;// metal: "fuzz", refractive: "refraction index"
 };
 
@@ -73,9 +75,13 @@ const uint MATERIAL_TYPE_DIFFUSE = 0;
 const uint MATERIAL_TYPE_METAL = 1;
 const uint MATERIAL_TYPE_REFRACTIVE = 2;
 
+const uint TEXTURE_TYPE_SOLID = 0;
+const uint TEXTURE_TYPE_CHECKERED = 1;
+
 // CONSTANTS
+const float PI = 3.1415926535897932384626433832795f;
+
 const float MAX_RAY_COLLISION_DISTANCE = 100000000.0f;
-//const uint SAMPLES = 100;
 const uint MAX_DEPTH = 50;
 const vec3 BACKGROUND_COLOR = vec3(0.70f, 0.80f, 1.00f);
 
@@ -84,8 +90,9 @@ const Camera camera = Camera(25.0f, 0.0f, 10.0f, vec3(13.0f, 2.0f, -3.0f), vec3(
 
 // METHODS
 vec3 calculateRayColor(in Ray ray);
-ScatterRecord scatter(const Ray ray, const HitRecord record);
 vec3 rayAt(const Ray ray, const float t);
+ScatterRecord scatter(const Ray ray, const HitRecord record);
+vec3 getTextureColor(const Material material, const vec3 point, const vec2 uv);
 HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const float tMax);
 HitRecord hitAnySphere(const Ray ray, const float tMin, const float tMax);
 float random();
@@ -187,7 +194,7 @@ ScatterRecord scatterMaterialDiffuse(const Ray ray, const HitRecord record, cons
         scatterDirection = record.normal;
     }
 
-    return ScatterRecord(true, material.attenuation.rgb, scatterDirection);
+    return ScatterRecord(true, getTextureColor(material, record.point, record.uv), scatterDirection);
 }
 
 ScatterRecord scatterMaterialMetal(const Ray ray, const HitRecord record, const Material material) {
@@ -196,7 +203,7 @@ ScatterRecord scatterMaterialMetal(const Ray ray, const HitRecord record, const 
     const vec3 scatterDirection = normalize(reflectedDirection + fuzzDireciton);
 
     const bool doesScatter = dot(scatterDirection, record.normal) > 0.0f;
-    return ScatterRecord(doesScatter, material.attenuation.rgb, scatterDirection);
+    return ScatterRecord(doesScatter, getTextureColor(material, record.point, record.uv), scatterDirection);
 }
 
 ScatterRecord scatterMaterialRefractive(const Ray ray, const HitRecord record, const Material material) {
@@ -211,7 +218,22 @@ ScatterRecord scatterMaterialRefractive(const Ray ray, const HitRecord record, c
         scatterDirection = reflect(ray.direction, record.normal);
     }
 
-    return ScatterRecord(true, material.attenuation.rgb, scatterDirection);
+    return ScatterRecord(true, getTextureColor(material, record.point, record.uv), scatterDirection);
+}
+
+
+// TEXTURE
+vec3 getTextureColor(const Material material, const vec3 point, const vec2 uv) {
+    if (material.textureType == TEXTURE_TYPE_SOLID) {
+        return material.colors[0];
+
+    } else if (material.textureType == TEXTURE_TYPE_CHECKERED) {
+        const float size = 6.0f;
+        const float sines = sin(size * point.x) * sin(size * point.y) * sin(size * point.z);
+        return material.colors[sines > 0.0f ? 0 : 1];
+    }
+
+    return material.colors[0];
 }
 
 
@@ -225,7 +247,7 @@ HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const 
     const float D = halfB * halfB - a * c;
 
     if (D < 0) {
-        return HitRecord(false, 0.0f, vec3(0.0f), vec3(0.0f), true, 0);
+        return HitRecord(false, 0.0f, vec3(0.0f), vec3(0.0f), true, 0, vec2(0.0f));
     }
 
     const float t1 = (-halfB - sqrt(D)) / a;
@@ -238,19 +260,20 @@ HitRecord hitSphere(const Ray ray, const Sphere sphere, const float tMin, const 
     } else if (t2 >= tMin && t2 <= tMax) {
         t = t2;
     } else {
-        return HitRecord(false, 0.0f, vec3(0.0f), vec3(0.0f), true, 0);
+        return HitRecord(false, 0.0f, vec3(0.0f), vec3(0.0f), true, 0, vec2(0.0f));
     }
 
     const vec3 point = rayAt(ray, t);
     const vec3 outwardNormal = normalize(point - sphere.center.xyz);
     const bool frontFace = dot(ray.direction, outwardNormal) < 0.0f;
     const vec3 normal = frontFace ? outwardNormal : -outwardNormal;
+    const vec2 uv = vec2((atan(-point.z, point.x) + PI) / 2 * PI, acos(-point.y) / PI);
 
-    return HitRecord(true, t, point, normal, frontFace, sphere.materialIndex);
+    return HitRecord(true, t, point, normal, frontFace, sphere.materialIndex, uv);
 }
 
 HitRecord hitAnySphere(const Ray ray, const float tMin, const float tMax) {
-    HitRecord record = HitRecord(false, tMax, vec3(0.0f), vec3(0.0f), true, 0);
+    HitRecord record = HitRecord(false, tMax, vec3(0.0f), vec3(0.0f), true, 0, vec2(0.0f));
 
     for (uint i = 0; i < scene.sphereAmount; i++) {
         HitRecord tempRecord = hitSphere(ray, scene.spheres[i], tMin, record.t);

@@ -12,7 +12,7 @@ const std::vector<const char*> requiredDeviceExtensions = {
 };
 
 Vulkan::Vulkan(VulkanSettings settings, Scene scene) :
-        settings(std::move(settings)), scene(std::move(scene)) {
+        settings(std::move(settings)), scene(scene) {
     createWindow();
     createInstance();
     createSurface();
