@@ -29,14 +29,15 @@ int main() {
                 .samples = samples
         };
 
-        std::cout << "Render pass " << pass << " / " << renderPasses << std::endl;
+        std::cout << "Render pass " << pass << " / " << renderPasses << " (" << (pass * samples / renderPasses) << " / "
+                  << samples << " samples)";
         auto renderPassBeginTime = std::chrono::steady_clock::now();
 
         vulkan.render(renderPassData);
 
         auto renderPassTime = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - renderPassBeginTime).count();
-        std::cout << "Render pass completed in " << renderPassTime << " ms" << std::endl << std::endl;
+        std::cout << " - Completed in " << renderPassTime << " ms" << std::endl;
 
         vulkan.update();
     }
@@ -52,5 +53,6 @@ int main() {
 
     while (!vulkan.shouldExit()) {
         vulkan.update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 }
