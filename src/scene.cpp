@@ -12,6 +12,34 @@ float randomFloat() {
     return randomFloat(0.0f, 1.0f);
 }
 
+// https://www.codespeedy.com/hsv-to-rgb-in-cpp/
+glm::vec3 getRandomColor() {
+    float h = std::floor(randomFloat(0.0f, 360.0f));
+    float s = 0.75f, v = 0.45f;
+
+    float C = s * v;
+    float X = C * (1.0f - std::fabs(std::fmod(h / 60.0f, 2.0f) - 1.0f));
+    float m = v - C;
+
+    float r, g, b;
+
+    if (h >= 0 && h < 60) {
+        r = C, g = X, b = 0;
+    } else if (h >= 60 && h < 120) {
+        r = X, g = C, b = 0;
+    } else if (h >= 120 && h < 180) {
+        r = 0, g = C, b = X;
+    } else if (h >= 180 && h < 240) {
+        r = 0, g = X, b = C;
+    } else if (h >= 240 && h < 300) {
+        r = X, g = 0, b = C;
+    } else {
+        r = C, g = 0, b = X;
+    }
+
+    return {r + m, g + m, b + m};
+}
+
 Scene generateRandomScene() {
     Scene scene = {
             .sphereAmount = 4,
@@ -21,7 +49,7 @@ Scene generateRandomScene() {
 
     scene.materials[0] = {MaterialType::DIFFUSE, TextureType::CHECKERED,
                           {glm::vec3(0.05f, 0.05f, 0.05f), glm::vec3(0.95f, 0.95f, 0.95f)}, 0.0f};
-    scene.materials[1] = {MaterialType::DIFFUSE, TextureType::SOLID, {glm::vec3(0.4f, 0.2f, 0.1f)}, 0.0f};
+    scene.materials[1] = {MaterialType::DIFFUSE, TextureType::SOLID, {glm::vec3(0.6f, 0.3f, 0.1f)}, 0.0f};
     scene.materials[2] = {MaterialType::METAL, TextureType::SOLID, {glm::vec3(0.7f, 0.6f, 0.5f)}, 0.0f};
     scene.materials[3] = {MaterialType::REFRACTIVE, TextureType::SOLID, {glm::vec3(1.0f, 1.0f, 1.0f)}, 1.5f};
 
@@ -39,9 +67,8 @@ Scene generateRandomScene() {
             const float materialProbability = randomFloat();
             Material material = {};
 
-            if (materialProbability < 0.8) {
-                const glm::vec3 albedo = glm::vec3(randomFloat() * randomFloat(), randomFloat() * randomFloat(),
-                                                   randomFloat() * randomFloat());
+            if (materialProbability < 0.7) {
+                const glm::vec3 albedo = getRandomColor();
                 material = {
                         .type = MaterialType::DIFFUSE,
                         .textureType = TextureType::SOLID,
@@ -49,10 +76,10 @@ Scene generateRandomScene() {
                         .specificAttribute = 0.0f
                 };
 
-            } else if (materialProbability < 0.95) {
+            } else if (materialProbability < 0.85) {
                 const glm::vec3 albedo = glm::vec3(randomFloat(0.5f, 1.0f), randomFloat(0.5f, 1.0f),
                                                    randomFloat(0.5f, 1.0f));
-                const float fuzz = randomFloat(0.0f, 0.5f);
+                const float fuzz = 0.0f;
 
                 material = {
                         .type = MaterialType::METAL,
