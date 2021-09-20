@@ -23,7 +23,7 @@ add_executable(
         src/vulkan.h
         src/vulkan.cpp
         src/vulkan_settings.h
-        src/render_pass_data.h
+        src/render_call_info.h
         src/scene.h
         src/scene.cpp
 )

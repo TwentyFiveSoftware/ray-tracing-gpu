@@ -8,7 +8,19 @@
 #include <vkfw/vkfw.hpp>
 #include "vulkan_settings.h"
 #include "scene.h"
-#include "render_pass_data.h"
+#include "render_call_info.h"
+
+struct VulkanImage {
+    vk::Image image;
+    vk::DeviceMemory memory;
+    vk::ImageView imageView;
+};
+
+struct VulkanBuffer {
+    vk::Buffer buffer;
+    vk::DeviceMemory memory;
+};
+
 
 class Vulkan {
 public:
@@ -18,7 +30,7 @@ public:
 
     void update();
 
-    void render(const RenderPassData &renderPassData);
+    void render(const RenderCallInfo &renderCallInfo);
 
     [[nodiscard]] bool shouldExit() const;
 
@@ -33,6 +45,15 @@ private:
     const vk::Format summedPixelColorImageFormat = vk::Format::eR16G16B16A16Unorm;
     const vk::ColorSpaceKHR colorSpace = vk::ColorSpaceKHR::eSrgbNonlinear;
     const vk::PresentModeKHR presentMode = vk::PresentModeKHR::eImmediate;
+
+    const std::vector<const char*> requiredInstanceExtensions = {
+            VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+    };
+
+    const std::vector<const char*> requiredDeviceExtensions = {
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    };
+
 
     vkfw::Window window;
     vk::Instance instance;
@@ -61,15 +82,9 @@ private:
     vk::Fence fence;
     vk::Semaphore semaphore;
 
-    vk::Buffer sceneBuffer;
-    vk::DeviceMemory sceneBufferMemory;
-
-    vk::Buffer renderPassDataBuffer;
-    vk::DeviceMemory renderPassDataBufferMemory;
-
-    vk::Image summedPixelColorImage;
-    vk::ImageView summedPixelColorImageView;
-    vk::DeviceMemory summedPixelColorImageMemory;
+    VulkanBuffer sceneBuffer;
+    VulkanBuffer renderCallInfoBuffer;
+    VulkanImage summedPixelColorImage;
 
     void createWindow();
 
@@ -116,10 +131,20 @@ private:
 
     void createSceneBuffer();
 
-    void createRenderPassDataBuffer();
+    void createRenderCallInfoBuffer();
 
-    void updateRenderPassDataBuffer(const RenderPassData &renderPassData);
+    void updateRenderCallInfoBuffer(const RenderCallInfo &renderCallInfo);
 
     void createSummedPixelColorImage();
+
+    [[nodiscard]] VulkanImage createImage(const vk::Format &format,
+                                          const vk::Flags<vk::ImageUsageFlagBits> &usageFlagBits);
+
+    void destroyImage(const VulkanImage &image) const;
+
+    [[nodiscard]] VulkanBuffer createBuffer(const vk::DeviceSize &size, const vk::Flags<vk::BufferUsageFlagBits> &usage,
+                                            const vk::Flags<vk::MemoryPropertyFlagBits> &memoryProperty);
+
+    void destroyBuffer(const VulkanBuffer &buffer) const;
 
 };

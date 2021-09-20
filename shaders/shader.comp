@@ -52,6 +52,7 @@ struct Viewport {
     vec3 cameraRight;
 };
 
+
 // INPUTS
 layout(binding = 0, rgba8_snorm) uniform image2D renderTarget;
 
@@ -63,11 +64,11 @@ layout(binding = 2) uniform Scene {
     Material materials[500];
 } scene;
 
-layout(binding = 3) uniform RenderPassData {
+layout(binding = 3) uniform RenderCallInfo {
     uint number;
-    uint renderPasses;
-    uint samples;
-} renderPassData;
+    uint totalRenderCalls;
+    uint totalSamples;
+} renderCallInfo;
 
 
 // ENUMS
@@ -77,6 +78,7 @@ const uint MATERIAL_TYPE_REFRACTIVE = 2;
 
 const uint TEXTURE_TYPE_SOLID = 0;
 const uint TEXTURE_TYPE_CHECKERED = 1;
+
 
 // CONSTANTS
 const float PI = 3.1415926535897932384626433832795f;
@@ -107,14 +109,14 @@ Ray getCameraRay(const Viewport viewport, const vec2 uv);
 
 
 // MAIN
-layout(local_size_x = 16, local_size_y = 16) in;
+layout(local_size_x = 16, local_size_y = 8) in;
 
 void main() {
     const vec2 imageSize = vec2(imageSize(renderTarget));
     const float aspectRatio = imageSize.x / imageSize.y;
 
     const Viewport viewport = calculateViewport(aspectRatio);
-    const uint samplesPerPass = renderPassData.samples / renderPassData.renderPasses;
+    const uint samplesPerPass = renderCallInfo.totalSamples / renderCallInfo.totalRenderCalls;
 
     vec3 summedPixelColor = imageLoad(summedPixelColorImage, ivec2(gl_GlobalInvocationID.xy)).rgb;
 
@@ -123,12 +125,12 @@ void main() {
         const float v = (gl_GlobalInvocationID.y + random()) / imageSize.y;
         Ray ray = getCameraRay(viewport, vec2(u, v));
 
-        summedPixelColor += calculateRayColor(ray) / float(renderPassData.samples);
+        summedPixelColor += calculateRayColor(ray) / float(renderCallInfo.totalSamples);
     }
 
     imageStore(summedPixelColorImage, ivec2(gl_GlobalInvocationID.xy), vec4(summedPixelColor, 1.0f));
 
-    const vec3 pixelColor = sqrt(summedPixelColor * renderPassData.samples / float(renderPassData.number * samplesPerPass));
+    const vec3 pixelColor = sqrt(summedPixelColor * renderCallInfo.totalSamples / float(renderCallInfo.number * samplesPerPass));
     imageStore(renderTarget, ivec2(gl_GlobalInvocationID.xy), vec4(pixelColor, 1.0f));
 }
 
@@ -300,7 +302,7 @@ uint currentRandomOffset = 0;
 
 float random() {
     currentRandomOffset += 1;
-    const uvec4 v = floatBitsToUint(vec4(gl_GlobalInvocationID.xy, renderPassData.number, currentRandomOffset));
+    const uvec4 v = floatBitsToUint(vec4(gl_GlobalInvocationID.xy, renderCallInfo.number, currentRandomOffset));
 
     uint m = hash(v.x ^ hash(v.y) ^ hash(v.z) ^ hash(v.w));
     m &= 0x007FFFFFu;

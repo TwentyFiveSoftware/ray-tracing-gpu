@@ -7,10 +7,6 @@
 #include <utility>
 #include <stb_image_write.h>
 
-const std::vector<const char*> requiredDeviceExtensions = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME
-};
-
 Vulkan::Vulkan(VulkanSettings settings, Scene scene) :
         settings(std::move(settings)), scene(scene) {
     createWindow();
@@ -20,7 +16,7 @@ Vulkan::Vulkan(VulkanSettings settings, Scene scene) :
     findQueueFamilies();
     createLogicalDevice();
     createSceneBuffer();
-    createRenderPassDataBuffer();
+    createRenderCallInfoBuffer();
     createSummedPixelColorImage();
     createCommandPool();
     createSwapChain();
@@ -35,15 +31,9 @@ Vulkan::Vulkan(VulkanSettings settings, Scene scene) :
 }
 
 Vulkan::~Vulkan() {
-    device.destroyImageView(summedPixelColorImageView);
-    device.destroyImage(summedPixelColorImage);
-    device.freeMemory(summedPixelColorImageMemory);
-
-    device.destroyBuffer(renderPassDataBuffer);
-    device.freeMemory(renderPassDataBufferMemory);
-
-    device.destroyBuffer(sceneBuffer);
-    device.freeMemory(sceneBufferMemory);
+    destroyImage(summedPixelColorImage);
+    destroyBuffer(sceneBuffer);
+    destroyBuffer(renderCallInfoBuffer);
 
     device.destroySemaphore(semaphore);
     device.destroyFence(fence);
@@ -65,8 +55,8 @@ void Vulkan::update() {
     vkfw::pollEvents();
 }
 
-void Vulkan::render(const RenderPassData &renderPassData) {
-    updateRenderPassDataBuffer(renderPassData);
+void Vulkan::render(const RenderCallInfo &renderCallInfo) {
+    updateRenderCallInfoBuffer(renderCallInfo);
 
     uint32_t swapChainImageIndex = device.acquireNextImageKHR(swapChain, UINT64_MAX, semaphore).value;
 
@@ -130,7 +120,12 @@ void Vulkan::createInstance() {
             .apiVersion = VK_API_VERSION_1_2
     };
 
-    auto enabledExtensions = vkfw::getRequiredInstanceExtensions();
+    std::vector<const char*> enabledExtensions;
+    enabledExtensions.insert(enabledExtensions.end(), vkfw::getRequiredInstanceExtensions().begin(),
+                             vkfw::getRequiredInstanceExtensions().end());
+    enabledExtensions.insert(enabledExtensions.end(), requiredInstanceExtensions.begin(),
+                             requiredInstanceExtensions.end());
+
     std::vector<const char*> enabledLayers =
             {"VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor", "VK_LAYER_KHRONOS_synchronization2"};
 
@@ -362,20 +357,20 @@ void Vulkan::createDescriptorSet() {
     };
 
     vk::DescriptorImageInfo summedPixelColorImageInfo = {
-            .imageView = summedPixelColorImageView,
+            .imageView = summedPixelColorImage.imageView,
             .imageLayout = vk::ImageLayout::eGeneral
     };
 
     vk::DescriptorBufferInfo sceneBufferInfo = {
-            .buffer = sceneBuffer,
+            .buffer = sceneBuffer.buffer,
             .offset = 0,
             .range = sizeof(Scene)
     };
 
-    vk::DescriptorBufferInfo renderPassDataBufferInfo = {
-            .buffer = renderPassDataBuffer,
+    vk::DescriptorBufferInfo renderCallInfoBufferInfo = {
+            .buffer = renderCallInfoBuffer.buffer,
             .offset = 0,
-            .range = sizeof(RenderPassData)
+            .range = sizeof(RenderCallInfo)
     };
 
     std::vector<vk::WriteDescriptorSet> descriptorWrites = {
@@ -409,7 +404,7 @@ void Vulkan::createDescriptorSet() {
                     .dstArrayElement = 0,
                     .descriptorCount = 1,
                     .descriptorType = vk::DescriptorType::eUniformBuffer,
-                    .pBufferInfo = &renderPassDataBufferInfo
+                    .pBufferInfo = &renderCallInfoBufferInfo
             }
     };
 
@@ -493,7 +488,7 @@ void Vulkan::createCommandBuffer() {
                     vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, swapChainImage),
             getImagePipelineBarrier(
                     vk::AccessFlagBits::eNoneKHR, vk::AccessFlagBits::eShaderWrite,
-                    vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, summedPixelColorImage)
+                    vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, summedPixelColorImage.image)
     };
 
     commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
@@ -501,8 +496,8 @@ void Vulkan::createCommandBuffer() {
                                   0, nullptr, 2, imageBarriersToGeneral);
 
     commandBuffer.dispatch(
-            static_cast<uint32_t>(std::ceil(float(settings.windowWidth) / float(settings.computeShaderGroupSize))),
-            static_cast<uint32_t>(std::ceil(float(settings.windowHeight) / float(settings.computeShaderGroupSize))),
+            static_cast<uint32_t>(std::ceil(float(settings.windowWidth) / float(settings.computeShaderGroupSizeX))),
+            static_cast<uint32_t>(std::ceil(float(settings.windowHeight) / float(settings.computeShaderGroupSizeY))),
             1);
 
     vk::ImageMemoryBarrier imageBarrierToPresent = getImagePipelineBarrier(
@@ -644,87 +639,102 @@ vk::ImageMemoryBarrier Vulkan::getImagePipelineBarrier(
 }
 
 void Vulkan::createSceneBuffer() {
-    sceneBuffer = device.createBuffer(
-            {
-                    .size = sizeof(Scene),
-                    .usage = vk::BufferUsageFlagBits::eUniformBuffer,
-                    .sharingMode = vk::SharingMode::eExclusive
-            });
+    sceneBuffer = createBuffer(sizeof(Scene),
+                               vk::BufferUsageFlagBits::eUniformBuffer,
+                               vk::MemoryPropertyFlagBits::eHostVisible |
+                               vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    vk::MemoryRequirements memoryRequirements = device.getBufferMemoryRequirements(sceneBuffer);
-
-    sceneBufferMemory = device.allocateMemory(
-            {
-                    .allocationSize = memoryRequirements.size,
-                    .memoryTypeIndex = findMemoryTypeIndex(memoryRequirements.memoryTypeBits,
-                                                           vk::MemoryPropertyFlagBits::eHostVisible |
-                                                           vk::MemoryPropertyFlagBits::eHostCoherent)
-            });
-
-    device.bindBufferMemory(sceneBuffer, sceneBufferMemory, 0);
-
-    void* data = device.mapMemory(sceneBufferMemory, 0, sizeof(Scene));
+    void* data = device.mapMemory(sceneBuffer.memory, 0, sizeof(Scene));
     memcpy(data, &scene, sizeof(Scene));
-    device.unmapMemory(sceneBufferMemory);
+    device.unmapMemory(sceneBuffer.memory);
 }
 
-void Vulkan::createRenderPassDataBuffer() {
-    renderPassDataBuffer = device.createBuffer(
-            {
-                    .size = sizeof(RenderPassData),
-                    .usage = vk::BufferUsageFlagBits::eUniformBuffer,
-                    .sharingMode = vk::SharingMode::eExclusive
-            });
-
-    vk::MemoryRequirements memoryRequirements = device.getBufferMemoryRequirements(renderPassDataBuffer);
-
-    renderPassDataBufferMemory = device.allocateMemory(
-            {
-                    .allocationSize = memoryRequirements.size,
-                    .memoryTypeIndex = findMemoryTypeIndex(memoryRequirements.memoryTypeBits,
-                                                           vk::MemoryPropertyFlagBits::eHostVisible |
-                                                           vk::MemoryPropertyFlagBits::eHostCoherent)
-            });
-
-    device.bindBufferMemory(renderPassDataBuffer, renderPassDataBufferMemory, 0);
+void Vulkan::createRenderCallInfoBuffer() {
+    renderCallInfoBuffer = createBuffer(sizeof(RenderCallInfo),
+                                        vk::BufferUsageFlagBits::eUniformBuffer,
+                                        vk::MemoryPropertyFlagBits::eHostVisible |
+                                        vk::MemoryPropertyFlagBits::eHostCoherent);
 }
 
-void Vulkan::updateRenderPassDataBuffer(const RenderPassData &renderPassData) {
-    void* data = device.mapMemory(renderPassDataBufferMemory, 0, sizeof(RenderPassData));
-    memcpy(data, &renderPassData, sizeof(RenderPassData));
-    device.unmapMemory(renderPassDataBufferMemory);
+void Vulkan::updateRenderCallInfoBuffer(const RenderCallInfo &renderCallInfo) {
+    void* data = device.mapMemory(renderCallInfoBuffer.memory, 0, sizeof(RenderCallInfo));
+    memcpy(data, &renderCallInfo, sizeof(RenderCallInfo));
+    device.unmapMemory(renderCallInfoBuffer.memory);
 }
 
 void Vulkan::createSummedPixelColorImage() {
+    summedPixelColorImage = createImage(summedPixelColorImageFormat, vk::ImageUsageFlagBits::eStorage);
+}
+
+VulkanImage Vulkan::createImage(const vk::Format &format, const vk::Flags<vk::ImageUsageFlagBits> &usageFlagBits) {
     vk::ImageCreateInfo imageCreateInfo = {
             .imageType = vk::ImageType::e2D,
-            .format = summedPixelColorImageFormat,
-            .extent = {
-                    .width = settings.windowWidth,
-                    .height = settings.windowHeight,
-                    .depth = 1
-            },
+            .format = format,
+            .extent = {.width = settings.windowWidth, .height = settings.windowHeight, .depth = 1},
             .mipLevels = 1,
             .arrayLayers = 1,
             .samples = vk::SampleCountFlagBits::e1,
             .tiling = vk::ImageTiling::eOptimal,
-            .usage = vk::ImageUsageFlagBits::eStorage,
+            .usage = usageFlagBits,
             .sharingMode = vk::SharingMode::eExclusive,
             .initialLayout = vk::ImageLayout::eUndefined
     };
 
-    summedPixelColorImage = device.createImage(imageCreateInfo);
+    vk::Image image = device.createImage(imageCreateInfo);
 
-    vk::MemoryRequirements memoryRequirements = device.getImageMemoryRequirements(summedPixelColorImage);
+    vk::MemoryRequirements memoryRequirements = device.getImageMemoryRequirements(image);
 
-    summedPixelColorImageMemory = device.allocateMemory(
-            {
-                    .allocationSize = memoryRequirements.size,
-                    .memoryTypeIndex = findMemoryTypeIndex(memoryRequirements.memoryTypeBits,
-                                                           vk::MemoryPropertyFlagBits::eDeviceLocal)
-            });
+    vk::MemoryAllocateInfo allocateInfo = {
+            .allocationSize = memoryRequirements.size,
+            .memoryTypeIndex = findMemoryTypeIndex(memoryRequirements.memoryTypeBits,
+                                                   vk::MemoryPropertyFlagBits::eDeviceLocal)
+    };
 
-    device.bindImageMemory(summedPixelColorImage, summedPixelColorImageMemory, 0);
+    vk::DeviceMemory memory = device.allocateMemory(allocateInfo);
 
-    summedPixelColorImageView = createImageView(summedPixelColorImage, summedPixelColorImageFormat);
+    device.bindImageMemory(image, memory, 0);
+
+    return {
+            .image = image,
+            .memory = memory,
+            .imageView = createImageView(image, format)
+    };
+}
+
+void Vulkan::destroyImage(const VulkanImage &image) const {
+    device.destroyImageView(image.imageView);
+    device.destroyImage(image.image);
+    device.freeMemory(image.memory);
+}
+
+VulkanBuffer Vulkan::createBuffer(const vk::DeviceSize &size, const vk::Flags<vk::BufferUsageFlagBits> &usage,
+                                  const vk::Flags<vk::MemoryPropertyFlagBits> &memoryProperty) {
+    vk::BufferCreateInfo bufferCreateInfo = {
+            .size = size,
+            .usage = usage,
+            .sharingMode = vk::SharingMode::eExclusive
+    };
+
+    vk::Buffer buffer = device.createBuffer(bufferCreateInfo);
+
+    vk::MemoryRequirements memoryRequirements = device.getBufferMemoryRequirements(buffer);
+
+    vk::MemoryAllocateInfo allocateInfo = {
+            .allocationSize = memoryRequirements.size,
+            .memoryTypeIndex = findMemoryTypeIndex(memoryRequirements.memoryTypeBits, memoryProperty)
+    };
+
+    vk::DeviceMemory memory = device.allocateMemory(allocateInfo);
+
+    device.bindBufferMemory(buffer, memory, 0);
+
+    return {
+            .buffer = buffer,
+            .memory = memory,
+    };
+}
+
+void Vulkan::destroyBuffer(const VulkanBuffer &buffer) const {
+    device.destroyBuffer(buffer.buffer);
+    device.freeMemory(buffer.memory);
 }
