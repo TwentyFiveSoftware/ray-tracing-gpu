@@ -8,7 +8,7 @@
 #include <stb_image_write.h>
 
 Vulkan::Vulkan(VulkanSettings settings, Scene scene) :
-        settings(std::move(settings)), scene(scene) {
+        settings(std::move(settings)), scene(scene), window(nullptr) {
     createWindow();
     createInstance();
     createSurface();
@@ -47,12 +47,13 @@ Vulkan::~Vulkan() {
     device.destroy();
     instance.destroySurfaceKHR(surface);
     instance.destroy();
-    window.destroy();
-    vkfw::terminate();
+
+    glfwDestroyWindow(window);
+    glfwTerminate();
 }
 
 void Vulkan::update() {
-    vkfw::pollEvents();
+    glfwPollEvents();
 }
 
 void Vulkan::render(const RenderCallInfo &renderCallInfo) {
@@ -84,17 +85,14 @@ void Vulkan::render(const RenderCallInfo &renderCallInfo) {
 }
 
 bool Vulkan::shouldExit() const {
-    return window.shouldClose();
+    return glfwWindowShouldClose(window);
 }
 
 void Vulkan::createWindow() {
-    vkfw::init();
+    glfwInit();
 
-    vkfw::WindowHints hints = {
-            .clientAPI = vkfw::ClientAPI::eNone
-    };
-
-    window = vkfw::createWindow(settings.windowWidth, settings.windowHeight, "GPU Ray Tracing", hints);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    window = glfwCreateWindow(settings.windowWidth, settings.windowHeight, "GPU Ray Tracing", nullptr, nullptr);
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageFunc(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -121,8 +119,11 @@ void Vulkan::createInstance() {
     };
 
     std::vector<const char*> enabledExtensions;
-    enabledExtensions.insert(enabledExtensions.end(), vkfw::getRequiredInstanceExtensions().begin(),
-                             vkfw::getRequiredInstanceExtensions().end());
+
+    uint32_t windowExtensionCount;
+    const char** windowExtensions = glfwGetRequiredInstanceExtensions(&windowExtensionCount);
+
+    enabledExtensions.insert(enabledExtensions.end(), windowExtensions, windowExtensions + windowExtensionCount);
     enabledExtensions.insert(enabledExtensions.end(), requiredInstanceExtensions.begin(),
                              requiredInstanceExtensions.end());
 
@@ -154,7 +155,7 @@ void Vulkan::createInstance() {
 }
 
 void Vulkan::createSurface() {
-    surface = vkfw::createWindowSurface(instance, window);
+    glfwCreateWindowSurface(instance, window, nullptr, reinterpret_cast<VkSurfaceKHR*>(&surface));
 }
 
 void Vulkan::pickPhysicalDevice() {

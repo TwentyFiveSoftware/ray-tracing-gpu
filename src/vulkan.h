@@ -2,10 +2,9 @@
 
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
-#define VKFW_NO_STRUCT_CONSTRUCTORS
 
 #include <vulkan/vulkan.hpp>
-#include <vkfw/vkfw.hpp>
+#include <GLFW/glfw3.h>
 #include "vulkan_settings.h"
 #include "scene.h"
 #include "render_call_info.h"
@@ -55,7 +54,7 @@ private:
     };
 
 
-    vkfw::Window window;
+    GLFWwindow* window;
     vk::Instance instance;
     vk::SurfaceKHR surface;
     vk::PhysicalDevice physicalDevice;
