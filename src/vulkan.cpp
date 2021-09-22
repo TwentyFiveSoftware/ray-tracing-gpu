@@ -130,6 +130,10 @@ void Vulkan::createInstance() {
     std::vector<const char*> enabledLayers =
             {"VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor", "VK_LAYER_KHRONOS_synchronization2"};
 
+#ifndef _DEBUG
+    enabledLayers.clear();
+#endif
+
     vk::DebugUtilsMessengerCreateInfoEXT debugMessengerInfo = {
             .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
                                vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
@@ -150,6 +154,10 @@ void Vulkan::createInstance() {
             .enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size()),
             .ppEnabledExtensionNames = enabledExtensions.data(),
     };
+
+#ifndef _DEBUG
+    instanceCreateInfo.pNext = nullptr;
+#endif
 
     instance = vk::createInstance(instanceCreateInfo);
 }

@@ -45,9 +45,7 @@ private:
     const vk::ColorSpaceKHR colorSpace = vk::ColorSpaceKHR::eSrgbNonlinear;
     const vk::PresentModeKHR presentMode = vk::PresentModeKHR::eImmediate;
 
-    const std::vector<const char*> requiredInstanceExtensions = {
-            VK_EXT_DEBUG_UTILS_EXTENSION_NAME
-    };
+    const std::vector<const char*> requiredInstanceExtensions = {};
 
     const std::vector<const char*> requiredDeviceExtensions = {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME
